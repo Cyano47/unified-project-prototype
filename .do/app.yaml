@@ -1,0 +1,12 @@
+name: unified-project-prototype
+region: nyc
+static_sites:
+  - name: prototype
+    github:
+      repo: Cyano47/unified-project-prototype
+      branch: main
+      deploy_on_push: true
+    build_command: npm ci && npm run build
+    output_dir: dist
+    environment_slug: node-js
+    catchall_document: index.html
