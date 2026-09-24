@@ -626,31 +626,45 @@ function useNav(): Ctx {
 /* Walkthrough tip                                                     */
 /* ------------------------------------------------------------------ */
 
-function Tip({ text, children, place = "top", show = true, block }: { text: string; children: ReactNode; place?: "top" | "bottom" | "right"; show?: boolean; block?: boolean }) {
+function Hint({ text }: { text: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: DO.blueTint, borderLeft: `3px solid ${DO.blue}`, borderRadius: 6, padding: "8px 12px" }}>
+      <div style={{ paddingTop: 1 }}><Ico name="sparkle" size={14} color={DO.blue} /></div>
+      <span style={{ fontSize: 12.5, color: DO.navy, lineHeight: 1.45 }}>{text}</span>
+    </div>
+  );
+}
+
+function Tip({ text, children, place = "right", show = true, block }: { text: string; children: ReactNode; place?: "left" | "right" | "top" | "bottom"; show?: boolean; block?: boolean }) {
   const { tips } = useNav();
   const on = tips && show;
-  const bubble: CSSProperties =
-    place === "top"
-      ? { bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)" }
-      : place === "bottom"
-        ? { top: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)" }
-        : { left: "calc(100% + 12px)", top: "50%", transform: "translateY(-50%)" };
-  const arrow: CSSProperties =
-    place === "top"
-      ? { top: "100%", left: "50%", marginLeft: -5, borderTop: `5px solid ${DO.navy}`, borderLeft: "5px solid transparent", borderRight: "5px solid transparent" }
-      : place === "bottom"
-        ? { bottom: "100%", left: "50%", marginLeft: -5, borderBottom: `5px solid ${DO.navy}`, borderLeft: "5px solid transparent", borderRight: "5px solid transparent" }
-        : { right: "100%", top: "50%", marginTop: -5, borderRight: `5px solid ${DO.navy}`, borderTop: "5px solid transparent", borderBottom: "5px solid transparent" };
+  if (!on) return block ? <div>{children}</div> : <>{children}</>;
+  const ring = (child: ReactNode, full?: boolean) => (
+    <div style={{ position: "relative", display: full ? "block" : "inline-block", width: full ? "fit-content" : undefined, maxWidth: "100%" }}>
+      <div className="do-pulse" style={{ position: "absolute", inset: -4, borderRadius: 10, pointerEvents: "none" }} />
+      {child}
+    </div>
+  );
+  if (block) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Hint text={text} />
+        {ring(children, true)}
+      </div>
+    );
+  }
+  const left = place === "left";
+  const chip = (
+    <div style={{ position: "relative", maxWidth: 260, background: DO.navy, color: DO.white, borderRadius: 8, padding: "7px 10px", fontSize: 12, lineHeight: 1.4, fontWeight: 400, whiteSpace: "normal", textAlign: "left", flexShrink: 1 }}>
+      {text}
+      <span style={{ position: "absolute", top: "50%", marginTop: -5, width: 0, height: 0, borderTop: "5px solid transparent", borderBottom: "5px solid transparent", ...(left ? { left: "100%", borderLeft: `5px solid ${DO.navy}` } : { right: "100%", borderRight: `5px solid ${DO.navy}` }) }} />
+    </div>
+  );
   return (
-    <div style={{ position: "relative", display: block ? "block" : "inline-block" }}>
-      {on && <div className="do-pulse" style={{ position: "absolute", inset: -4, borderRadius: 10, pointerEvents: "none" }} />}
-      {children}
-      {on && (
-        <div style={{ position: "absolute", zIndex: 30, width: 230, background: DO.navy, color: DO.white, borderRadius: 8, padding: "9px 11px", fontSize: 12, lineHeight: 1.45, boxShadow: "0 6px 18px rgba(3,27,78,0.25)", pointerEvents: "none", textAlign: "left", fontWeight: 400, whiteSpace: "normal", ...bubble }}>
-          {text}
-          <span style={{ position: "absolute", width: 0, height: 0, ...arrow }} />
-        </div>
-      )}
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
+      {left && chip}
+      {ring(children)}
+      {!left && chip}
     </div>
   );
 }
@@ -698,7 +712,7 @@ function ResourceMap({
 
   const state = (id: string): NodeState => {
     if (overrides?.[id]) return overrides[id];
-    if (mode === "draft" || draftIds?.includes(id)) return ["draft", "Not created · $0 until approved"];
+    if (mode === "draft" || draftIds?.includes(id)) return ["draft", "Not created yet · $0"];
     return ["ok", "Healthy"];
   };
 
@@ -765,7 +779,8 @@ function ResourceMap({
             style={{
               position: "absolute", left: n.x, top: n.y, width: NW, height: NH, boxSizing: "border-box", padding: "8px 10px", borderRadius: 8,
               background: draft ? "#FAFCFF" : DO.white, cursor: ext ? "default" : "pointer", display: "flex", flexDirection: "column", gap: 3,
-              border: sel ? `2px solid ${DO.blue}` : `1px ${draft ? "dashed" : "solid"} ${tone === "bad" ? DO.redDot : draft ? "#9FB3D9" : DO.border}`,
+              border: sel ? `1px solid ${DO.blue}` : `1px ${draft ? "dashed" : "solid"} ${tone === "bad" ? DO.redDot : draft ? "#9FB3D9" : DO.border}`,
+              boxShadow: sel ? `0 0 0 2px ${DO.blue}` : "none",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -784,25 +799,34 @@ function ResourceMap({
   );
 }
 
-function NodeDrawer({ line, stateText, onClose }: { line: Line; stateText: string; onClose: () => void }) {
+function DetailCell({ label, children, grow }: { label: string; children: ReactNode; grow?: boolean }) {
   return (
-    <div style={{ width: 250, flexShrink: 0, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 10, alignSelf: "flex-start" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <IconTile name={iconFor(line.kind)} size={26} />
-        <T size={14} weight={700} style={{ flex: 1 }}>{line.name}</T>
-        <Btn variant="link" onClick={onClose}>Close</Btn>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: grow ? 2 : 1 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color: DO.text3, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: DO.text, lineHeight: 1.45 }}>{children}</span>
+    </div>
+  );
+}
+
+function NodeDrawer({ line, tone, stateText, onClose, width }: { line: Line; tone: Tone; stateText: string; onClose: () => void; width: number }) {
+  return (
+    <div style={{ width, maxWidth: "100%", boxSizing: "border-box", background: DO.white, border: `1px solid ${DO.border}`, borderTop: `3px solid ${DO.blue}`, borderRadius: 8, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: `1px solid ${DO.border}` }}>
+        <IconTile name={iconFor(line.kind)} size={30} />
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+          <T size={14} weight={700}>{line.name}</T>
+          <T size={12} color={DO.text2}>{line.kind}</T>
+        </div>
+        <Badge tone={tone}>{stateText}</Badge>
+        <div onClick={onClose} style={{ cursor: "pointer", color: DO.text3, fontSize: 18, lineHeight: 1, padding: "0 4px" }}>×</div>
       </div>
-      <T size={12} color={DO.text2}>{line.kind}</T>
-      <div style={{ height: 1, background: DO.border }} />
-      <KV k="Status" v={stateText} />
-      <KV k="Why it exists" v={line.why} />
-      <KV k="Cost" v={`${line.price ? `${money(line.price)}/mo` : "$0 fixed"}${line.usage ? ` + ${line.usage}` : ""}`} />
-      {line.cli && (
-        <>
-          <T size={11} weight={600} color={DO.text3} style={{ textTransform: "uppercase", letterSpacing: 0.3 }}>Same object elsewhere</T>
-          <Mono>{line.cli}</Mono>
-        </>
-      )}
+      <div style={{ display: "flex", gap: 24, padding: "14px 16px" }}>
+        <DetailCell label="Why it exists" grow>{line.why}</DetailCell>
+        <DetailCell label="Cost">{line.price ? `${money(line.price)}/mo` : "$0 fixed"}{line.usage && <><br /><span style={{ color: DO.text2 }}>{`+ ${line.usage}`}</span></>}</DetailCell>
+        <DetailCell label="Same object in doctl" grow>
+          {line.cli ? <span style={{ fontFamily: "monospace", fontSize: 12, background: DO.page, border: `1px solid ${DO.border}`, borderRadius: 4, padding: "3px 6px", display: "inline-block" }}>{line.cli}</span> : <span style={{ color: DO.text3 }}>Managed in the console</span>}
+        </DetailCell>
+      </div>
     </div>
   );
 }
@@ -813,11 +837,16 @@ function MapWithDrawer(props: {
 }) {
   const [sel, setSel] = useState<string | null>(null);
   const line = props.lines.find((l) => l.name === sel);
-  const st = sel && props.overrides?.[sel] ? props.overrides[sel][1] : props.mode === "draft" || (sel && props.draftIds?.includes(sel)) ? "Not created · $0 until approved" : "Healthy";
+  const [tone, st]: NodeState =
+    sel && props.overrides?.[sel] ? props.overrides[sel] : props.mode === "draft" || (sel && props.draftIds?.includes(sel)) ? ["draft", "Not created · $0 until approved"] : ["ok", "Healthy"];
   return (
-    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
       <ResourceMap {...props} selected={sel} onSelect={setSel} />
-      {line && <NodeDrawer line={line} stateText={st} onClose={() => setSel(null)} />}
+      {line ? (
+        <NodeDrawer line={line} tone={tone} stateText={st} onClose={() => setSel(null)} width={props.map.w} />
+      ) : (
+        <T size={12} color={DO.text3}>Click a box to see why it exists, what it costs, and the same object in doctl.</T>
+      )}
     </div>
   );
 }
@@ -959,7 +988,7 @@ function ConsoleFrame({ children, active }: { children: ReactNode; active: strin
           </div>
           <div style={{ color: DO.text2, display: "flex", gap: 12, alignItems: "center" }}>
             <Ico name="help" size={17} />
-            <Tip text="Jump ahead in time. Each notification opens what the owner sees on that day." place="bottom" show={bellTip && !bell}>
+            <Tip text="Jump ahead in time. Each notification opens what the owner sees on that day." place="left" show={bellTip && !bell}>
               <div onClick={() => setBell(!bell)} style={{ position: "relative", cursor: "pointer", display: "flex", padding: 2 }}>
                 <Ico name="bell" size={17} />
                 {urgent > 0 && <span style={{ position: "absolute", top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, background: DO.redDot, color: DO.white, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{urgent}</span>}
@@ -1093,7 +1122,7 @@ function HomeScreen() {
       <PageHeader
         title="Projects"
         sub="Every project starts the same way: connect a repo, describe what you want, or start empty."
-        right={<Tip text="One button for every way to create a project. Launchpad and New Project are now the same flow." place="bottom" show={ctx.created.length === 0}><Btn icon="plus" onClick={() => ctx.go("start")}>New project</Btn></Tip>}
+        right={<Tip text="One button for every way to create a project. Launchpad and New Project are now the same flow." place="left" show={ctx.created.length === 0}><Btn icon="plus" onClick={() => ctx.go("start")}>New project</Btn></Tip>}
       />
       <DTable
         headers={["Project", "Purpose", "Resources", "Managed by"]}
@@ -1255,7 +1284,7 @@ function ComplianceScreen() {
               </Card>
             );
             return i === 0 && x.id === "hipaa" ? (
-              <Tip key={x.id} text="Try turning HIPAA mode off and on. Watch the swaps and the Summary price change." place="top" block>{card}</Tip>
+              <Tip key={x.id} text="Try turning HIPAA mode off and on. Watch the swaps and the Summary price change." block>{card}</Tip>
             ) : (
               <div key={x.id}>{card}</div>
             );
@@ -1287,7 +1316,7 @@ function ModeScreen() {
       <Stepper at={2} />
       <Centered width={840}>
         <T size={24} weight={700} color={DO.navy} style={{ textAlign: "center" }}>How should this project be built?</T>
-        <Tip text={ctx.sc.id === "fin" ? "Agencies often want to pick every resource. Try Manual here; protections still apply." : "VibeCloud proposes a priced plan and keeps watch. Manual lets you pick everything."} place="top" block>
+        <Tip text={ctx.sc.id === "fin" ? "Agencies often want to pick every resource. Try Manual here; protections still apply." : "VibeCloud proposes a priced plan and keeps watch. Manual lets you pick everything."} block>
           <div style={{ display: "flex", gap: 14 }}>
             <OptionCard on={m === "vibe"} onClick={() => ctx.setMode("vibe")} icon="sparkle" title="VibeCloud" tag="Recommended" body="Say the outcome and a cost ceiling. We propose a priced plan, create it after you approve, check it hourly and send a weekly brief." />
             <OptionCard on={m === "manual"} onClick={() => ctx.setMode("manual")} icon="dots" title="Manual" body="Pick each resource yourself from the Create menu. You still get the Summary panel, protection warnings and one approval." />
@@ -1320,6 +1349,7 @@ function KitsScreen() {
     <ConsoleFrame active="Starter kits">
       <BackLink />
       <PageHeader title="Starter kits" sub="Examples of what a project can be. Picking one fills in the description; the rest of the flow is the same as any new project." />
+      {ctx.tips && <Hint text="Kits are just pre-filled descriptions. The chatbot kit walks through a VibeCloud plan with guardrails." />}
       <div style={{ display: "flex", gap: 14 }}>
         {kits.map(([t, d, ics, p], i) => {
           const card = (
@@ -1332,8 +1362,9 @@ function KitsScreen() {
             </div>
           );
           return (
-            <div key={t} style={{ flex: 1, minWidth: 0 }}>
-              {i === 0 ? <Tip text="Kits are just pre-filled descriptions. This one walks through a VibeCloud plan with guardrails." place="bottom" block>{card}</Tip> : card}
+            <div key={t} style={{ flex: 1, minWidth: 0, position: "relative", borderRadius: 10 }}>
+              {i === 0 && ctx.tips && <div className="do-pulse" style={{ position: "absolute", inset: -4, borderRadius: 10, pointerEvents: "none" }} />}
+              {card}
             </div>
           );
         })}
@@ -1348,7 +1379,7 @@ function EmptyScreen() {
   const tiles: [IconName, string][] = [["droplet", "Droplets"], ["app", "App Platform"], ["db", "Databases"], ["spaces", "Spaces Object Storage"], ["kb", "Knowledge Bases"], ["agent", "Agents"]];
   return (
     <ConsoleFrame active="New project">
-      <PageHeader icon title="my-project" sub="Empty project · owner you" right={<Tip text="Empty projects use the same flow when you add to them. Try it from here." place="bottom"><Btn icon="plus" onClick={() => ctx.go("start")}>Add to this project</Btn></Tip>} />
+      <PageHeader icon title="my-project" sub="Empty project · owner you" right={<Tip text="Empty projects use the same flow when you add to them. Try it from here." place="left"><Btn icon="plus" onClick={() => ctx.go("start")}>Add to this project</Btn></Tip>} />
       <Tabs items={["Resources", "Activity", "Settings"]} active="Resources" />
       <Card>
         <SectionLabel>Create something new</SectionLabel>
@@ -1422,7 +1453,7 @@ function PlanScreen() {
       <BackLink />
       <Stepper at={3} />
       <PageHeader crumb={`New project · ${sc.project} · VibeCloud`} title={`Plan for ${sc.project}`} sub="Draft. Dashed boxes are not created and cost $0 until you approve." right={<Badge tone="draft">Draft</Badge>} />
-      <Tip text="Click any box to see why it's in the plan, what it costs, and the same object in doctl." place="top" block>
+      <Tip text="Dashed boxes are drafts: nothing here exists or bills yet. Click uploads or db-1 to see why each part is in the plan." block>
         <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={linesFor(sc, g)} mode="draft" groupLabel={`Plan · ${sc.project}`} groupRight="draft · not created" meter={u.pauseAt ? { text: `Usage pauses at ${money(u.pauseAt)} · expected about ${money(u.estimate)}`, pct: (u.estimate / u.pauseAt) * 100 } : undefined} />
       </Tip>
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -1551,9 +1582,11 @@ function ApproveScreen() {
           </Card>
           {g.hipaa && <Banner tone="warn" title="BAA not signed yet">Resources can deploy now. Don't store real patient data until DigitalOcean's Business Associate Agreement is signed. Request it through Sales or Support.</Banner>}
         </div>
-        <Tip text="The only step that bills. Everything before this was free to explore." place="top" show={!ctx.missingScope}>
-          <Summary sc={sc} guards={g} extra={extra} cta={isChange ? "Approve change" : "Approve and deploy"} onCta={approve} disabled={ctx.missingScope} />
-        </Tip>
+        <div style={{ width: 260, flexShrink: 0 }}>
+          <Tip text="The only step that bills. Everything before this was free to explore." show={!ctx.missingScope} block>
+            <Summary sc={sc} guards={g} extra={extra} cta={isChange ? "Approve change" : "Approve and deploy"} onCta={approve} disabled={ctx.missingScope} />
+          </Tip>
+        </div>
       </div>
     </ConsoleFrame>
   );
@@ -1597,7 +1630,7 @@ function DeployScreen() {
           <Mono>{proof.a}</Mono>
           {g.cspm && <Badge tone="ok">CSPM scan: 0 critical, 0 high</Badge>}
           <T size={12} color={DO.text3}>If any step had failed, everything created so far would have been removed and nothing billed.</T>
-          <Tip text="Success means a real request got a real answer, not just that resources exist." place="top" block>
+          <Tip text="Success means a real request got a real answer, not just that resources exist." block>
             <Btn full onClick={() => ctx.go("project")}>Go to project</Btn>
           </Tip>
         </Card>
@@ -1675,7 +1708,7 @@ function ProjectScreen() {
   return (
     <ProjectShell
       tab="Resources"
-      right={canChange ? <Tip text="Add a feature to a live project. The same flow returns a change plan on top of what exists." place="bottom">{addBtn}</Tip> : addBtn}
+      right={canChange ? <Tip text="Add a feature to a live project. The same flow returns a change plan on top of what exists." place="left">{addBtn}</Tip> : addBtn}
       banner={ctx.extra.some((e) => e.name === WORKER.name) && sc.id === "health" ? <Banner tone="ok" title="Change applied">worker-1 is live and sending reminders. Undo is available for 72 hours in Activity.</Banner> : undefined}
     >
       <div style={{ display: "flex", gap: 12 }}>
@@ -1717,7 +1750,7 @@ function AddScreen() {
             <Chip>HIPAA mode on</Chip>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <Tip text="The plan comes back as a change: new parts dashed, existing parts kept." place="bottom">
+            <Tip text="The plan comes back as a change: new parts dashed, existing parts kept.">
               <Btn onClick={() => ctx.go("diff")}>Build change plan</Btn>
             </Tip>
             <Btn variant="secondary" onClick={() => ctx.go("kits")}>Browse starter kits</Btn>
@@ -1768,7 +1801,7 @@ function AlertEmailScreen() {
       <KV k="Last change" v="Access key deleted by alex@acme.io at 08:52" />
       <KV k="Proposed fix" v="Create a new access key and update chatbot's AGENT_KEY. $0. Can be undone for 72 hours." />
       <div style={{ display: "flex", gap: 10 }}>
-        <Tip text="The owner hears within the hour, with the cause and a priced fix. Open it in the console." place="bottom">
+        <Tip text="The owner hears within the hour, with the cause and a priced fix. Open it in the console.">
           <Btn onClick={() => ctx.go("alertConsole")}>Review fix in console</Btn>
         </Tip>
         <Btn variant="secondary">Reply to alex@acme.io</Btn>
@@ -1825,7 +1858,7 @@ function BriefScreen() {
         ]}
       />
       <div style={{ display: "flex", gap: 10 }}>
-        <Tip text="Every upkeep item is a draft with a price and an undo. Nothing changes without approval." place="bottom">
+        <Tip text="Every upkeep item is a draft with a price and an undo. Nothing changes without approval.">
           <Btn onClick={() => ctx.go("project")}>Review drafts</Btn>
         </Tip>
         <Btn variant="secondary" onClick={() => ctx.go("project")}>Open project</Btn>
@@ -1845,7 +1878,7 @@ function PauseScreen() {
       <Card>
         <SectionLabel>Choose what happens next</SectionLabel>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Tip text="Raising the pause point is a change too, so it can be undone from Activity." place="top">
+          <Tip text="Raising the pause point is a change too, so it can be undone from Activity.">
             <Btn onClick={() => { ctx.setRaised(true); ctx.go("project"); }}>Raise pause point to $45</Btn>
           </Tip>
           <Btn variant="secondary" onClick={() => ctx.go("project")}>Stay paused until Oct 1</Btn>
@@ -1946,7 +1979,7 @@ function AgentScreen() {
               <Badge tone="warn">BAA pending</Badge>
             </div>
             <T size={11.5} color={DO.text3}>Agents can draft. Only a person with the right role can approve.</T>
-            <Tip text="Same plan as the console flow. Approval always happens with a person in the console." place="top" block>
+            <Tip text="Same plan as the console flow. Approval always happens with a person in the console." block>
               <Btn full onClick={() => ctx.go("approve")}>Open in console to approve</Btn>
             </Tip>
           </div>
