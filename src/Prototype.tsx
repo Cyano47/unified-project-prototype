@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { Button, Callout, Divider, Grid, H1, H2, Link, Pill, Row, Stack, Table, Text, useHostTheme } from "./ui";
 
-/* DigitalOcean console palette. Used only inside the mock console, by request. */
+/* DigitalOcean console palette */
 const DO = {
   navy: "#031B4E",
   navyActive: "#1B3A78",
@@ -484,7 +483,7 @@ function fixedTotal(sc: Scenario, g: Guards, extra: Line[] = []) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Resource map layouts (from the earlier Outcome Plans canvas)        */
+/* Resource map layouts                                                */
 /* ------------------------------------------------------------------ */
 
 type MapNode = { id: string; x: number; y: number; external?: { title: string; kind: string; icon: IconName } };
@@ -573,64 +572,100 @@ function mapKey(sc: Scenario, g: Guards) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Screens and paths                                                   */
+/* Navigation state                                                    */
 /* ------------------------------------------------------------------ */
 
 type ScreenId =
-  | "home" | "start" | "github" | "analysis" | "compliance" | "mode" | "kits" | "ask" | "plan" | "manual"
+  | "home" | "start" | "github" | "analysis" | "compliance" | "mode" | "kits" | "ask" | "plan" | "manual" | "empty"
   | "approve" | "deploy" | "project" | "add" | "diff" | "alertEmail" | "alertConsole" | "brief" | "pause" | "undo" | "export" | "agent";
 
-const META: Record<ScreenId, { title: string; stage: string; note: string }> = {
-  home: { title: "Projects home", stage: "Start", note: "One entry point. Launchpad becomes Starter kits in the nav and opens this same flow. The Create something new tiles on the project page become Add to this project." },
-  start: { title: "Name and how to start", stage: "Start", note: "Replaces both the Create Project form and the Launchpad kit form. Environment type and purpose are inferred later instead of being required dropdowns." },
-  github: { title: "Connect GitHub", stage: "Start", note: "Read-only access to the repos you pick. The repo already says what the app needs." },
-  analysis: { title: "What we found", stage: "Understand", note: "Every detected part shows its evidence. Nothing is guessed silently. Data signals decide whether compliance suggestions appear." },
-  compliance: { title: "Recommended protections", stage: "Understand", note: "HIPAA mode changes the plan: App Platform, Managed Databases and Knowledge Bases are not on DigitalOcean's HIPAA-eligible list, so it swaps to Droplets, a Volume and pgvector. Toggle it to see the swap and the price change." },
-  mode: { title: "Choose a path", stage: "Choose", note: "The one real fork. VibeCloud proposes and keeps watch. Manual lets you pick every resource. Both share the Summary panel, compliance warnings and approval." },
-  kits: { title: "Starter kits as examples", stage: "Start", note: "The three Launchpad kits survive as example prompts, not separate products." },
-  ask: { title: "Ask with a cost ceiling", stage: "VibeCloud", note: "Plain language plus the ceiling in one sentence. Only region, size, model and pause point can change here." },
-  plan: { title: "Priced plan", stage: "VibeCloud", note: "The resource map from the earlier canvas, in draft: dashed boxes are not created and cost $0. Click any box for why it exists and what it costs." },
-  manual: { title: "Manual builder", stage: "Manual", note: "Today's Create menu, inside the project. Live price and warnings when a choice conflicts with a protection." },
-  approve: { title: "Approve", stage: "Approve", note: "Nothing bills until this click. Exact scopes, a revocable plan credential, and the BAA status for HIPAA." },
-  deploy: { title: "Deploy and verify", stage: "Approve", note: "Success means a real request returned a real answer. A failed setup removes everything it created." },
-  project: { title: "Project page (after)", stage: "Keep running", note: "Resources grouped by the plan they serve. Map view is the resource map from the earlier canvas, now live; List view is the familiar DO resource list." },
-  add: { title: "Add to this project", stage: "Keep running", note: "Same flow, entered from an existing project. Existing resources are context." },
-  diff: { title: "Plan as a change", stage: "Keep running", note: "The map shows the new part dashed on top of what exists. Managed Valkey is skipped because it is not HIPAA-eligible." },
-  alertEmail: { title: "A check fails: email", stage: "Keep running", note: "Day 9. The owner hears within the hour: which part, the last change, who made it, and a priced fix." },
-  alertConsole: { title: "A check fails: console", stage: "Keep running", note: "The broken part is red on the map. The fix is a draft with a price and undo." },
-  brief: { title: "Weekly brief", stage: "Keep running", note: "Health, cost vs estimate, and upkeep. Every fix is a draft that says whether it can be undone." },
-  pause: { title: "Pause point reached", stage: "Keep running", note: "Usage inside the plan stops growing and the app stays up. Not a bill cap." },
-  undo: { title: "History and undo", stage: "Keep running", note: "Every change has a 72-hour undo window." },
-  export: { title: "Export and release", stage: "Leave", note: "Export is a Terraform snapshot. Release ends the plan and leaves every resource running." },
-  agent: { title: "Same plan from an agent", stage: "Any surface", note: "A coding agent calls plan_outcome on the DO MCP server and gets the same priced draft." },
-};
-
-type PathId = "A" | "B" | "C" | "D" | "E" | "F";
-type PathDef = { id: PathId; name: string; scenario: ScenarioId; start: "github" | "describe" | "empty"; mode: "vibe" | "manual"; steps: ScreenId[] };
-
-const FLOWS: PathDef[] = [
-  { id: "A", name: "Health repo · VibeCloud · HIPAA", scenario: "health", start: "github", mode: "vibe", steps: ["home", "start", "github", "analysis", "compliance", "mode", "ask", "plan", "approve", "deploy", "project"] },
-  { id: "B", name: "Fintech repo · Manual · CSPM", scenario: "fin", start: "github", mode: "manual", steps: ["home", "start", "github", "analysis", "compliance", "mode", "manual", "approve", "deploy", "project"] },
-  { id: "C", name: "No repo · Starter kit", scenario: "kit", start: "describe", mode: "vibe", steps: ["home", "start", "kits", "analysis", "compliance", "ask", "plan", "approve", "deploy", "project"] },
-  { id: "D", name: "Day 9 to month 3", scenario: "kit", start: "describe", mode: "vibe", steps: ["project", "alertEmail", "alertConsole", "brief", "pause", "undo", "export"] },
-  { id: "E", name: "Coding agent", scenario: "health", start: "github", mode: "vibe", steps: ["agent", "approve", "project"] },
-  { id: "F", name: "Add to existing project", scenario: "health", start: "github", mode: "vibe", steps: ["project", "add", "diff", "approve", "project"] },
-];
+type Mode = "vibe" | "manual";
+type StartChoice = "github" | "describe" | "empty";
 
 type Ctx = {
+  screen: ScreenId;
   sc: Scenario;
-  path: PathDef;
-  next: () => void;
+  go: (s: ScreenId) => void;
+  back: () => void;
+  canBack: boolean;
+  pickScenario: (id: ScenarioId, then?: ScreenId) => void;
   guards: Guards;
   setGuard: (id: string, v: boolean) => void;
-  mode: "vibe" | "manual";
-  setMode: (m: "vibe" | "manual") => void;
+  mode: Mode;
+  setMode: (m: Mode) => void;
+  modeOf: (id: ScenarioId) => Mode;
+  guardsOf: (id: ScenarioId) => Guards;
   missingScope: boolean;
   setMissingScope: (v: boolean) => void;
   extra: Line[];
   addExtra: (l: Line) => void;
-  step: number;
+  created: ScenarioId[];
+  markCreated: () => void;
+  change: boolean;
+  setChange: (v: boolean) => void;
+  fixed: boolean;
+  setFixed: (v: boolean) => void;
+  raised: boolean;
+  setRaised: (v: boolean) => void;
+  startChoice: StartChoice;
+  setStartChoice: (c: StartChoice) => void;
+  tour: ScenarioId | null;
+  tips: boolean;
+  setTips: (v: boolean) => void;
 };
+
+const Nav = createContext<Ctx | null>(null);
+
+function useNav(): Ctx {
+  const c = useContext(Nav);
+  if (!c) throw new Error("Nav context missing");
+  return c;
+}
+
+/* ------------------------------------------------------------------ */
+/* Walkthrough tip                                                     */
+/* ------------------------------------------------------------------ */
+
+function Tip({ text, children, place = "top", show = true, block }: { text: string; children: ReactNode; place?: "top" | "bottom" | "right"; show?: boolean; block?: boolean }) {
+  const { tips } = useNav();
+  const on = tips && show;
+  const bubble: CSSProperties =
+    place === "top"
+      ? { bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)" }
+      : place === "bottom"
+        ? { top: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)" }
+        : { left: "calc(100% + 12px)", top: "50%", transform: "translateY(-50%)" };
+  const arrow: CSSProperties =
+    place === "top"
+      ? { top: "100%", left: "50%", marginLeft: -5, borderTop: `5px solid ${DO.navy}`, borderLeft: "5px solid transparent", borderRight: "5px solid transparent" }
+      : place === "bottom"
+        ? { bottom: "100%", left: "50%", marginLeft: -5, borderBottom: `5px solid ${DO.navy}`, borderLeft: "5px solid transparent", borderRight: "5px solid transparent" }
+        : { right: "100%", top: "50%", marginTop: -5, borderRight: `5px solid ${DO.navy}`, borderTop: "5px solid transparent", borderBottom: "5px solid transparent" };
+  return (
+    <div style={{ position: "relative", display: block ? "block" : "inline-block" }}>
+      {on && <div className="do-pulse" style={{ position: "absolute", inset: -4, borderRadius: 10, pointerEvents: "none" }} />}
+      {children}
+      {on && (
+        <div style={{ position: "absolute", zIndex: 30, width: 230, background: DO.navy, color: DO.white, borderRadius: 8, padding: "9px 11px", fontSize: 12, lineHeight: 1.45, boxShadow: "0 6px 18px rgba(3,27,78,0.25)", pointerEvents: "none", textAlign: "left", fontWeight: 400, whiteSpace: "normal", ...bubble }}>
+          {text}
+          <span style={{ position: "absolute", width: 0, height: 0, ...arrow }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BackLink() {
+  const { back, canBack } = useNav();
+  if (!canBack) return null;
+  return (
+    <div onClick={back} style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", color: DO.blue, fontSize: 12.5, fontWeight: 600 }}>
+      <span style={{ display: "inline-flex", transform: "rotate(180deg)" }}><Ico name="arrow" size={13} /></span>
+      Back
+    </div>
+  );
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Resource map                                                        */
@@ -848,9 +883,9 @@ function Summary({ sc, guards, cta, onCta, extra, disabled }: { sc: Scenario; gu
 /* Frames                                                              */
 /* ------------------------------------------------------------------ */
 
-function NavItem({ label, active, badge, icon, dim }: { label: string; active?: boolean; badge?: string; icon?: ReactNode; dim?: boolean }) {
+function NavItem({ label, active, badge, icon, dim, onClick }: { label: string; active?: boolean; badge?: string; icon?: ReactNode; dim?: boolean; onClick?: () => void }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", margin: "0 6px", borderRadius: 4, background: active ? DO.navyActive : "transparent" }}>
+    <div onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", margin: "0 6px", borderRadius: 4, background: active ? DO.navyActive : "transparent", cursor: onClick ? "pointer" : "default" }}>
       {icon}
       <span style={{ fontSize: 12.5, color: active ? DO.white : dim ? DO.navyHeader : DO.navyText, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
       {badge && <span style={{ fontSize: 9, fontWeight: 700, color: DO.navy, background: "#9FE6FF", borderRadius: 3, padding: "1px 4px" }}>{badge}</span>}
@@ -867,21 +902,44 @@ function NavHeader({ label, open }: { label: string; open?: boolean }) {
   );
 }
 
-function ConsoleFrame({ children, active, project }: { children: ReactNode; active: string; project?: string }) {
-  const projects = ["first-project", "NewsAgent", ...(project && project !== "NewsAgent" ? [project] : [])];
+type Note = { title: string; sub: string; tone: Tone; sc: ScenarioId; to?: ScreenId };
+
+function notesFor(ctx: Ctx): Note[] {
+  const out: Note[] = [];
+  if (ctx.created.includes("kit")) {
+    if (!ctx.fixed) out.push({ title: "support-bot stopped answering", sub: "Day 9 · hourly check failed", tone: "bad", sc: "kit", to: "alertEmail" });
+    out.push({ title: "Weekly brief · support-bot", sub: "Week 6 · 2 upkeep drafts", tone: "info", sc: "kit", to: "brief" });
+    if (!ctx.raised) out.push({ title: "support-bot reached its pause point", sub: "Month 3 · usage paused, app still up", tone: "warn", sc: "kit", to: "pause" });
+  }
+  if (ctx.created.includes("health")) out.push({ title: "clinic-notes · CSPM scan passed", sub: "web-1 and db-1 · 0 critical", tone: "ok", sc: "health" });
+  if (ctx.created.includes("fin")) out.push({ title: "ledger-app · CSPM scan passed", sub: "api-1 and ledger-db · 0 critical", tone: "ok", sc: "fin" });
+  return out;
+}
+
+function ConsoleFrame({ children, active }: { children: ReactNode; active: string }) {
+  const ctx = useNav();
+  const [bell, setBell] = useState(false);
+  const notes = notesFor(ctx);
+  const urgent = notes.filter((n) => n.to).length;
+  const bellTip = ctx.screen === "project" && ctx.sc.id === "kit" && notes.some((n) => n.to);
   return (
-    <div style={{ fontFamily: DO.font, border: `1px solid ${DO.border}`, borderRadius: 10, overflow: "hidden", display: "flex", minHeight: 700, background: DO.page, color: DO.text }}>
-      <div style={{ width: 176, flexShrink: 0, background: DO.navy, display: "flex", flexDirection: "column", paddingBottom: 16 }}>
-        <div style={{ padding: "14px 18px 10px" }}><DoLogo /></div>
-        <NavItem label="Home" active={active === "Home"} />
-        <NavItem label="Starter kits" active={active === "Starter kits"} />
+    <div style={{ fontFamily: DO.font, display: "flex", minHeight: "100vh", background: DO.page, color: DO.text }}>
+      <div style={{ width: 200, flexShrink: 0, background: DO.navy, display: "flex", flexDirection: "column", paddingBottom: 16 }}>
+        <div onClick={() => ctx.go("home")} style={{ padding: "14px 18px 10px", cursor: "pointer" }}><DoLogo /></div>
+        <NavItem label="Home" active={active === "Home"} onClick={() => ctx.go("home")} />
+        <NavItem label="Starter kits" active={active === "Starter kits"} onClick={() => ctx.go("kits")} />
         <NavHeader label="PROJECTS" open />
         <NavItem
           label="New Project"
           active={active === "New project"}
+          onClick={() => ctx.go("start")}
           icon={<span style={{ width: 16, height: 16, borderRadius: 3, background: DO.blue, display: "flex", alignItems: "center", justifyContent: "center" }}><Ico name="plus" size={11} color={DO.white} width={2} /></span>}
         />
-        {projects.map((p) => <NavItem key={p} label={p} active={active === p} />)}
+        <NavItem label="first-project" />
+        <NavItem label="NewsAgent" />
+        {ctx.created.map((id) => (
+          <NavItem key={id} label={SCENARIOS[id].project} active={active === SCENARIOS[id].project} onClick={() => ctx.pickScenario(id, "project")} />
+        ))}
         <NavHeader label="FAVORITES" open />
         <NavItem label="Star Your Favorite" dim />
         <NavHeader label="MANAGED AGENTS" open />
@@ -890,18 +948,23 @@ function ConsoleFrame({ children, active, project }: { children: ReactNode; acti
         {["INFERENCE ENGINE", "DATA & LEARNING", "CORE CLOUD", "MARKETPLACE", "SECURITY", "ACCOUNT"].map((h) => <NavHeader key={h} label={h} />)}
       </div>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", position: "relative" }}>
-        <div style={{ height: 52, background: DO.white, borderBottom: `1px solid ${DO.border}`, display: "flex", alignItems: "center", gap: 14, padding: "0 18px" }}>
-          <div style={{ width: 280, display: "flex", alignItems: "center", gap: 8, border: `1px solid ${DO.border}`, borderRadius: 18, padding: "6px 12px", color: DO.text3 }}>
+        <div style={{ height: 56, background: DO.white, borderBottom: `1px solid ${DO.border}`, display: "flex", alignItems: "center", gap: 14, padding: "0 20px", position: "relative", zIndex: 20 }}>
+          <div style={{ width: 320, display: "flex", alignItems: "center", gap: 8, border: `1px solid ${DO.border}`, borderRadius: 18, padding: "7px 12px", color: DO.text3 }}>
             <Ico name="search" size={13} />
             <span style={{ fontSize: 12 }}>Search by resource name or public IP (Cmd+B)</span>
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 4, background: DO.blue, color: DO.white, borderRadius: 16, padding: "6px 12px", fontSize: 12.5, fontWeight: 600 }}>
+          <div onClick={() => ctx.go("start")} style={{ display: "flex", alignItems: "center", gap: 4, background: DO.blue, color: DO.white, borderRadius: 16, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
             Create <Ico name="chevron" size={12} color={DO.white} />
           </div>
-          <div style={{ color: DO.text2, display: "flex", gap: 12 }}>
+          <div style={{ color: DO.text2, display: "flex", gap: 12, alignItems: "center" }}>
             <Ico name="help" size={17} />
-            <Ico name="bell" size={17} />
+            <Tip text="Jump ahead in time. Each notification opens what the owner sees on that day." place="bottom" show={bellTip && !bell}>
+              <div onClick={() => setBell(!bell)} style={{ position: "relative", cursor: "pointer", display: "flex", padding: 2 }}>
+                <Ico name="bell" size={17} />
+                {urgent > 0 && <span style={{ position: "absolute", top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, background: DO.redDot, color: DO.white, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{urgent}</span>}
+              </div>
+            </Tip>
             <Ico name="sun" size={17} />
           </div>
           <T size={12.5} color={DO.text2}>Test</T>
@@ -909,48 +972,84 @@ function ConsoleFrame({ children, active, project }: { children: ReactNode; acti
           <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${DO.blue}`, color: DO.blue, borderRadius: 16, padding: "5px 12px", fontSize: 12.5, fontWeight: 600 }}>
             <Ico name="sparkle" size={13} /> AI Assistant
           </div>
+          {bell && (
+            <div style={{ position: "absolute", top: 50, right: 150, width: 340, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, boxShadow: "0 8px 24px rgba(3,27,78,0.14)", overflow: "hidden" }}>
+              <div style={{ padding: "10px 14px", borderBottom: `1px solid ${DO.border}` }}><T weight={700}>Notifications</T></div>
+              {notes.length === 0 && <div style={{ padding: 14 }}><T size={12.5} color={DO.text3}>Nothing yet. Create a project to see checks and briefs here.</T></div>}
+              {notes.map((n) => (
+                <div
+                  key={n.title}
+                  onClick={() => { setBell(false); ctx.pickScenario(n.sc, n.to ?? "project"); }}
+                  style={{ display: "flex", gap: 10, padding: "10px 14px", borderBottom: `1px solid ${DO.border}`, cursor: "pointer" }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: 4, marginTop: 5, flexShrink: 0, background: { ok: DO.greenDot, warn: DO.amberDot, bad: DO.redDot, info: DO.blue, draft: DO.text3, neutral: DO.text3 }[n.tone] }} />
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <T size={12.5} weight={600}>{n.title}</T>
+                    <T size={11.5} color={DO.text3}>{n.sub}</T>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <div style={{ padding: "28px 36px 70px", display: "flex", justifyContent: "center" }}>
-          <div style={{ width: "100%", maxWidth: 1060, display: "flex", flexDirection: "column", gap: 18 }}>{children}</div>
+        <div style={{ padding: "28px 40px 90px", display: "flex", justifyContent: "center" }}>
+          <div style={{ width: "100%", maxWidth: 1180, display: "flex", flexDirection: "column", gap: 18 }}>{children}</div>
         </div>
-        <div style={{ position: "absolute", right: 16, bottom: 14, background: DO.blue, color: DO.white, borderRadius: 18, padding: "7px 14px", fontSize: 12, fontWeight: 600 }}>Share Feedback</div>
+        <TipsToggle />
+        <div style={{ position: "fixed", right: 18, bottom: 16, background: DO.blue, color: DO.white, borderRadius: 18, padding: "7px 14px", fontSize: 12, fontWeight: 600 }}>Share Feedback</div>
       </div>
     </div>
   );
 }
 
-function EmailFrame({ children }: { children: ReactNode }) {
+function TipsToggle() {
+  const { tips, setTips } = useNav();
   return (
-    <div style={{ fontFamily: DO.font, border: `1px solid ${DO.border}`, borderRadius: 10, overflow: "hidden", minHeight: 700, background: "#F6F8FC", color: DO.text }}>
-      <div style={{ height: 48, display: "flex", alignItems: "center", gap: 10, padding: "0 18px", borderBottom: `1px solid ${DO.border}`, background: DO.white }}>
+    <div onClick={() => setTips(!tips)} style={{ position: "fixed", left: 216, bottom: 16, display: "flex", alignItems: "center", gap: 8, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 18, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: DO.text2, cursor: "pointer", boxShadow: "0 2px 8px rgba(3,27,78,0.08)", zIndex: 25 }}>
+      <Ico name="sparkle" size={13} color={tips ? DO.blue : DO.text3} />
+      {tips ? "Walkthrough on" : "Walkthrough off"}
+    </div>
+  );
+}
+
+function EmailFrame({ children }: { children: ReactNode }) {
+  const { back } = useNav();
+  return (
+    <div style={{ fontFamily: DO.font, minHeight: "100vh", background: "#F6F8FC", color: DO.text }}>
+      <div style={{ height: 52, display: "flex", alignItems: "center", gap: 10, padding: "0 20px", borderBottom: `1px solid ${DO.border}`, background: DO.white }}>
         <Ico name="mail" size={18} color={DO.text2} />
-        <T size={14} weight={600} color={DO.text2}>Inbox</T>
+        <T size={14} weight={600} color={DO.text2} style={{ flex: 1 }}>Inbox</T>
+        <Btn variant="link" onClick={back}>Back to console</Btn>
       </div>
-      <div style={{ padding: 28, display: "flex", justifyContent: "center" }}>
-        <div style={{ width: 600, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, overflow: "hidden" }}>
-          <div style={{ background: DO.navy, padding: "14px 20px", display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ padding: 32, display: "flex", justifyContent: "center" }}>
+        <div style={{ width: 640, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, overflow: "visible" }}>
+          <div style={{ background: DO.navy, padding: "14px 20px", display: "flex", alignItems: "center", gap: 10, borderRadius: "8px 8px 0 0" }}>
             <DoLogo size={20} />
             <T size={13} weight={600} color={DO.white}>DigitalOcean</T>
           </div>
           <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
         </div>
       </div>
+      <TipsToggle />
     </div>
   );
 }
 
 function IdeFrame({ side }: { side: ReactNode }) {
-  const bg = "#181818";
-  const fg = "#CCCCCC";
+  const { back } = useNav();
   return (
-    <div style={{ fontFamily: DO.font, border: "1px solid #2B2B2B", borderRadius: 10, overflow: "hidden", minHeight: 700, display: "flex", background: bg, color: fg }}>
+    <div style={{ fontFamily: DO.font, minHeight: "100vh", display: "flex", background: "#181818", color: "#CCCCCC" }}>
       <div style={{ flex: 1, minWidth: 0, borderRight: "1px solid #2B2B2B" }}>
-        <div style={{ height: 36, borderBottom: "1px solid #2B2B2B", display: "flex", alignItems: "center", padding: "0 14px", fontSize: 12, color: "#9D9D9D" }}>clinic-notes · prisma/schema.prisma</div>
-        <div style={{ padding: 16, fontFamily: "monospace", fontSize: 12, lineHeight: "20px", color: "#9CDCFE", whiteSpace: "pre" }}>
+        <div style={{ height: 40, borderBottom: "1px solid #2B2B2B", display: "flex", alignItems: "center", padding: "0 14px", fontSize: 12, color: "#9D9D9D", gap: 12 }}>
+          <span onClick={back} style={{ color: "#6FA8FF", cursor: "pointer" }}>Back to console</span>
+          <span>clinic-notes · prisma/schema.prisma</span>
+        </div>
+        <div style={{ padding: 16, fontFamily: "monospace", fontSize: 12.5, lineHeight: "20px", color: "#9CDCFE", whiteSpace: "pre" }}>
           {"model Visit {\n  id             String   @id\n  patient_id     String\n  dob            DateTime\n  diagnosis_code String\n  notes          String\n  embedding      Unsupported(\"vector\")\n}\n"}
         </div>
       </div>
-      <div style={{ width: 420, flexShrink: 0, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>{side}</div>
+      <div style={{ width: 440, flexShrink: 0, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>{side}</div>
+      <TipsToggle />
     </div>
   );
 }
@@ -958,8 +1057,6 @@ function IdeFrame({ side }: { side: ReactNode }) {
 /* ------------------------------------------------------------------ */
 /* Screens: start, understand, choose                                  */
 /* ------------------------------------------------------------------ */
-
-type SP = { ctx: Ctx };
 
 function Centered({ children, width = 640 }: { children: ReactNode; width?: number }) {
   return <div style={{ width: "100%", maxWidth: width, alignSelf: "center", display: "flex", flexDirection: "column", gap: 18 }}>{children}</div>;
@@ -981,79 +1078,118 @@ function OptionCard({ on, onClick, icon, title, body, tag }: { on: boolean; onCl
   );
 }
 
-function HomeScreen({ ctx }: SP) {
-  const rows = [
-    ["first-project", "Default project", "2 Droplets, 1 Space", "Manual"],
-    ["NewsAgent", "Agent that summarizes the news", "App, agent, knowledge base", "VibeCloud plan"],
+function HomeScreen() {
+  const ctx = useNav();
+  const rows: [string, string, string, string, ScenarioId | null][] = [
+    ["first-project", "Default project", "2 Droplets, 1 Space", "Manual", null],
+    ["NewsAgent", "Agent that summarizes the news", "App, agent, knowledge base", "VibeCloud plan", null],
+    ...ctx.created.map((id): [string, string, string, string, ScenarioId | null] => {
+      const s0 = SCENARIOS[id];
+      return [s0.project, s0.purpose, linesFor(s0, ctx.guardsOf(id)).map((l) => l.name).join(", "), ctx.modeOf(id) === "manual" ? "Manual" : "VibeCloud plan", id];
+    }),
   ];
   return (
     <ConsoleFrame active="Home">
-      <PageHeader title="Projects" sub="Every project starts the same way: connect a repo, describe what you want, or start empty." right={<Btn icon="plus" onClick={ctx.next}>New project</Btn>} />
-      <Banner tone="info" title="Launchpad is now Starter kits">Starter kits open the same New project flow with a description already filled in. Nothing to learn twice.</Banner>
+      <PageHeader
+        title="Projects"
+        sub="Every project starts the same way: connect a repo, describe what you want, or start empty."
+        right={<Tip text="One button for every way to create a project. Launchpad and New Project are now the same flow." place="bottom" show={ctx.created.length === 0}><Btn icon="plus" onClick={() => ctx.go("start")}>New project</Btn></Tip>}
+      />
       <DTable
         headers={["Project", "Purpose", "Resources", "Managed by"]}
-        rows={rows.map((r) => [<T weight={600} color={DO.blue}>{r[0]}</T>, r[1], r[2], <Badge tone={r[3] === "Manual" ? "neutral" : "info"}>{r[3]}</Badge>])}
+        rows={rows.map((r) => [
+          <span onClick={r[4] ? () => ctx.pickScenario(r[4] as ScenarioId, "project") : undefined} style={{ cursor: r[4] ? "pointer" : "default" }}><T weight={600} color={DO.blue}>{r[0]}</T></span>,
+          r[1], r[2], <Badge tone={r[3] === "Manual" ? "neutral" : "info"}>{r[3]}</Badge>,
+        ])}
       />
       <SectionLabel>Start from an example</SectionLabel>
       <div style={{ display: "flex", gap: 12 }}>
-        {[["agent", "Customer support chatbot"], ["kb", "RAG knowledge assistant"], ["app", "Web app with database"]].map(([ic, t]) => (
-          <Card key={t} pad={14} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <IconTile name={ic as IconName} />
-            <T weight={600} size={12.5}>{t}</T>
-          </Card>
+        {([["agent", "Customer support chatbot", true], ["kb", "RAG knowledge assistant", false], ["app", "Web app with database", false]] as [IconName, string, boolean][]).map(([ic, t, live]) => (
+          <div key={t} onClick={live ? () => ctx.pickScenario("kit", "analysis") : () => ctx.go("kits")} style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: 14, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, cursor: "pointer" }}>
+            <IconTile name={ic} />
+            <T weight={600} size={12.5} style={{ flex: 1 }}>{t}</T>
+            <Ico name="arrow" size={14} color={DO.blue} />
+          </div>
         ))}
+      </div>
+      <div onClick={() => ctx.pickScenario("health", "agent")} style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, cursor: "pointer" }}>
+        <IconTile name="sparkle" color={DO.white} bg={DO.navy} />
+        <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+          <T weight={600} size={13}>Working in a coding agent?</T>
+          <T size={12} color={DO.text2}>The DigitalOcean MCP server drafts the same priced plan from Cursor or Claude Code. You approve it here.</T>
+        </div>
+        <Ico name="arrow" size={14} color={DO.blue} />
       </div>
     </ConsoleFrame>
   );
 }
 
-function StartScreen({ ctx }: SP) {
-  const st = ctx.path.start;
+function StartScreen() {
+  const ctx = useNav();
+  const st = ctx.startChoice;
+  const name = st === "github" ? "Named after the repo you pick" : st === "describe" ? "support-bot" : "my-project";
+  const next = () => (st === "github" ? ctx.go("github") : st === "describe" ? ctx.go("kits") : ctx.go("empty"));
   return (
     <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={0} />
       <Centered>
         <T size={24} weight={700} color={DO.navy} style={{ textAlign: "center" }}>Create new project</T>
         <Card>
-          <Field label="Project name"><Input value={ctx.sc.project} /></Field>
-          <Field label="Description (optional)"><Input value="" /></Field>
+          <Field label="Project name"><Input value={name} /></Field>
           <SectionLabel>How do you want to start?</SectionLabel>
-          <OptionCard on={st === "github"} icon="github" title="Connect a GitHub repo" tag="Recommended" body="We read the repo to find what the app needs: runtime, database, storage, and any sensitive data." />
-          <OptionCard on={st === "describe"} icon="sparkle" title="Describe it, or pick a starter kit" body="Write what you want in a sentence. Starter kits are pre-filled descriptions." />
-          <OptionCard on={st === "empty"} icon="plus" title="Start empty" body="Create the project and add resources yourself from the Create menu." />
-          <T size={12} color={DO.text3}>Environment and purpose are no longer required here. We infer them and you can change them on the next step.</T>
-          <Btn full onClick={ctx.next}>Continue</Btn>
-          <div style={{ textAlign: "center" }}><Btn variant="link">Cancel</Btn></div>
+          <Tip text="Pick how to start. A repo gives the best plan; a description or starter kit works without one." place="right" block>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <OptionCard on={st === "github"} onClick={() => ctx.setStartChoice("github")} icon="github" title="Connect a GitHub repo" tag="Recommended" body="We read the repo to find what the app needs: runtime, database, storage, and any sensitive data." />
+              <OptionCard on={st === "describe"} onClick={() => ctx.setStartChoice("describe")} icon="sparkle" title="Describe it, or pick a starter kit" body="Write what you want in a sentence. Starter kits are pre-filled descriptions." />
+              <OptionCard on={st === "empty"} onClick={() => ctx.setStartChoice("empty")} icon="plus" title="Start empty" body="Create the project and add resources yourself from the Create menu." />
+            </div>
+          </Tip>
+          <T size={12} color={DO.text3}>Environment and purpose are no longer required here. We infer them and you can change them on a later step.</T>
+          <Btn full onClick={next}>Continue</Btn>
+          <div style={{ textAlign: "center" }}><Btn variant="link" onClick={() => ctx.go("home")}>Cancel</Btn></div>
         </Card>
       </Centered>
     </ConsoleFrame>
   );
 }
 
-function GithubScreen({ ctx }: SP) {
-  const repo = ctx.sc.repo ?? "";
-  const org = repo.split("/")[0];
-  const repos = [repo, `${org}/marketing-site`, `${org}/infra-scripts`];
+function GithubScreen() {
+  const ctx = useNav();
+  const repos: [string, ScenarioId | null, string][] = [
+    ["brightpath/clinic-notes", "health", "Next.js · Prisma · main · 2 hours ago"],
+    ["northgate/ledger-app", "fin", "Django · Celery · main · yesterday"],
+    ["brightpath/marketing-site", null, "Static HTML · main · 4 months ago"],
+  ];
+  const [sel, setSel] = useState<ScenarioId>(ctx.tour === "fin" ? "fin" : "health");
+  const repo = repos.find((r) => r[1] === sel)?.[0] ?? "";
   return (
     <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={0} />
-      <Centered width={560}>
+      <Centered width={600}>
         <Card>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <IconTile name="github" color={DO.white} bg={DO.text} size={36} />
             <div style={{ display: "flex", flexDirection: "column" }}>
               <T size={16} weight={700}>Connect GitHub</T>
-              <T size={12} color={DO.text2}>{`Connected as ${ctx.sc.owner} · organization ${org}`}</T>
+              <T size={12} color={DO.text2}>Connected · read-only access to the repos you picked</T>
             </div>
           </div>
           <SectionLabel>Pick a repository</SectionLabel>
-          {repos.map((r, i) => (
-            <div key={r} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 12px", borderRadius: 6, border: i === 0 ? `2px solid ${DO.blue}` : `1px solid ${DO.border}` }}>
-              <Radio on={i === 0} />
-              <T weight={i === 0 ? 600 : 400} style={{ flex: 1 }}>{r}</T>
-              <T size={12} color={DO.text3}>{["main · 2 hours ago", "main · 3 weeks ago", "main · 4 months ago"][i]}</T>
+          <Tip text="clinic-notes stores patient records and triggers HIPAA suggestions. ledger-app handles payments and triggers CSPM." place="right" block>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {repos.map(([r, id, meta]) => (
+                <div key={r} onClick={id ? () => setSel(id) : undefined} style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 12px", borderRadius: 6, background: DO.white, cursor: id ? "pointer" : "default", opacity: id ? 1 : 0.5, border: id === sel ? `2px solid ${DO.blue}` : `1px solid ${DO.border}` }}>
+                  <Radio on={id === sel} />
+                  <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+                    <T weight={id === sel ? 600 : 400}>{r}</T>
+                    <T size={11.5} color={DO.text3}>{meta}</T>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </Tip>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {["Read code and metadata of the repos you pick", "No write access. We never push to your repo", "Revoke any time in Settings > Integrations"].map((p) => (
               <div key={p} style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1062,56 +1198,68 @@ function GithubScreen({ ctx }: SP) {
               </div>
             ))}
           </div>
-          <Btn full onClick={ctx.next}>{`Continue with ${repo}`}</Btn>
+          <Btn full onClick={() => ctx.pickScenario(sel, "analysis")}>{`Continue with ${repo}`}</Btn>
         </Card>
       </Centered>
     </ConsoleFrame>
   );
 }
 
-function AnalysisScreen({ ctx }: SP) {
+function AnalysisScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   return (
     <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={1} />
-      <PageHeader crumb={`New project · ${sc.project}`} title={sc.repo ? `What we found in ${sc.repo}` : "What we understood"} sub={sc.repo ? "Every part below has evidence from the repo. Change anything that's wrong." : "From your description. Change anything that's wrong."} />
+      <PageHeader crumb={`New project · ${sc.project}`} title={sc.repo ? `What we found in ${sc.repo}` : "What we understood"} sub={sc.repo ? "Every part below has evidence from the repo. Change anything that's wrong." : "From the starter kit description. Change anything that's wrong."} />
       <DTable headers={["Part", "Evidence", "Suggested product"]} rows={sc.found.map((f) => [<T weight={600}>{f[0]}</T>, <T size={12} color={DO.text2} style={{ fontFamily: "monospace" }}>{f[1]}</T>, f[2]])} tones={sc.found.map(() => "ok")} />
       <div style={{ display: "flex", gap: 16 }}>
-        <div style={{ flex: 1 }}><Field label="Environment" hint="Inferred: the repo has a production branch and a custom domain."><SelectBox value={sc.env} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Environment" hint="Inferred. Change it if it's wrong."><SelectBox value={sc.env} /></Field></div>
         <div style={{ flex: 1 }}><Field label="Purpose" hint="Inferred from the code. Used to suggest protections."><SelectBox value={sc.purpose} /></Field></div>
       </div>
       {sc.signal && <Banner tone="warn" title={sc.signal.title}>{sc.signal.body}</Banner>}
       <div style={{ display: "flex", gap: 10 }}>
-        <Btn onClick={ctx.next}>Continue</Btn>
-        <Btn variant="secondary">Edit parts</Btn>
+        <Tip text={sc.signal ? "The data signal above decides which protections are suggested next." : "Guardrails are suggested because this is a public chatbot."} place="right">
+          <Btn onClick={() => ctx.go("compliance")}>Continue</Btn>
+        </Tip>
       </div>
     </ConsoleFrame>
   );
 }
 
-function ComplianceScreen({ ctx }: SP) {
+function ComplianceScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const title = sc.id === "health" ? "Recommended protections for health records" : sc.id === "fin" ? "Recommended protections for payment data" : "Recommended protections for a public chatbot";
   return (
     <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={1} />
       <PageHeader crumb={`New project · ${sc.project}`} title={title} sub="On by default because of what we found. Each one shows its price." />
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 420, display: "flex", flexDirection: "column", gap: 12 }}>
-          {sc.guards.map((x) => (
-            <Card key={x.id} pad={16} style={{ flexDirection: "row", gap: 14, alignItems: "flex-start" }}>
-              <IconTile name="shield" color={g[x.id] ? DO.green : DO.text3} bg={g[x.id] ? DO.greenBg : DO.page} />
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <T weight={600}>{x.name}</T>
-                  <T size={12} color={DO.text3}>{x.priceText}</T>
+          {sc.guards.map((x, i) => {
+            const card = (
+              <Card pad={16} style={{ flexDirection: "row", gap: 14, alignItems: "flex-start" }}>
+                <IconTile name="shield" color={g[x.id] ? DO.green : DO.text3} bg={g[x.id] ? DO.greenBg : DO.page} />
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <T weight={600}>{x.name}</T>
+                    <T size={12} color={DO.text3}>{x.priceText}</T>
+                  </div>
+                  <T size={12.5} color={DO.text2}>{x.what}</T>
                 </div>
-                <T size={12.5} color={DO.text2}>{x.what}</T>
-              </div>
-              <Switch on={!!g[x.id]} onChange={(v) => ctx.setGuard(x.id, v)} />
-            </Card>
-          ))}
+                <Switch on={!!g[x.id]} onChange={(v) => ctx.setGuard(x.id, v)} />
+              </Card>
+            );
+            return i === 0 && x.id === "hipaa" ? (
+              <Tip key={x.id} text="Try turning HIPAA mode off and on. Watch the swaps and the Summary price change." place="top" block>{card}</Tip>
+            ) : (
+              <div key={x.id}>{card}</div>
+            );
+          })}
           {sc.swaps && g.hipaa && (
             <>
               <SectionLabel>What HIPAA mode changes in the plan</SectionLabel>
@@ -1121,8 +1269,8 @@ function ComplianceScreen({ ctx }: SP) {
           {sc.swaps && !g.hipaa && (
             <Banner tone="bad" title="App Platform, Managed Postgres and the knowledge base can't hold patient data">They are not on DigitalOcean's HIPAA-eligible list. Keep HIPAA mode off only if this app will never store real patient records.</Banner>
           )}
-          {sc.id === "fin" && <Banner tone="info" title="Scans are manual in CSPM today">The plan runs a scan after deploy and after every change. Hourly scanning would need CSPM to support scheduled scans.</Banner>}
-          <div><Btn onClick={ctx.next}>Continue</Btn></div>
+          {sc.id === "fin" && <Banner tone="info" title="Scans run after deploy and after every change">CSPM scans are started by the plan, so you don't have to remember to run them.</Banner>}
+          <div><Btn onClick={() => ctx.go(sc.id === "kit" ? "ask" : "mode")}>Continue</Btn></div>
         </div>
         <Summary sc={sc} guards={g} />
       </div>
@@ -1130,17 +1278,21 @@ function ComplianceScreen({ ctx }: SP) {
   );
 }
 
-function ModeScreen({ ctx }: SP) {
+function ModeScreen() {
+  const ctx = useNav();
   const m = ctx.mode;
   return (
     <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={2} />
-      <Centered width={820}>
+      <Centered width={840}>
         <T size={24} weight={700} color={DO.navy} style={{ textAlign: "center" }}>How should this project be built?</T>
-        <div style={{ display: "flex", gap: 14 }}>
-          <OptionCard on={m === "vibe"} onClick={() => ctx.setMode("vibe")} icon="sparkle" title="VibeCloud" tag="Recommended" body="Say the outcome and a cost ceiling. We propose a priced plan, create it after you approve, check it hourly and send a weekly brief." />
-          <OptionCard on={m === "manual"} onClick={() => ctx.setMode("manual")} icon="dots" title="Manual" body="Pick each resource yourself from the Create menu. You still get the Summary panel, protection warnings and one approval." />
-        </div>
+        <Tip text={ctx.sc.id === "fin" ? "Agencies often want to pick every resource. Try Manual here; protections still apply." : "VibeCloud proposes a priced plan and keeps watch. Manual lets you pick everything."} place="top" block>
+          <div style={{ display: "flex", gap: 14 }}>
+            <OptionCard on={m === "vibe"} onClick={() => ctx.setMode("vibe")} icon="sparkle" title="VibeCloud" tag="Recommended" body="Say the outcome and a cost ceiling. We propose a priced plan, create it after you approve, check it hourly and send a weekly brief." />
+            <OptionCard on={m === "manual"} onClick={() => ctx.setMode("manual")} icon="dots" title="Manual" body="Pick each resource yourself from the Create menu. You still get the Summary panel, protection warnings and one approval." />
+          </div>
+        </Tip>
         <DTable
           headers={["", "VibeCloud", "Manual"]}
           rows={[
@@ -1151,14 +1303,14 @@ function ModeScreen({ ctx }: SP) {
             ["Undo and Terraform export", "Yes", "Export only"],
           ]}
         />
-        {m !== ctx.path.mode && <Banner tone="info" title={`This path continues as ${ctx.path.mode === "vibe" ? "VibeCloud" : "Manual"}`}>Pick the other path at the top of the canvas to walk through that version.</Banner>}
-        <Btn full onClick={ctx.next}>Continue</Btn>
+        <Btn full onClick={() => ctx.go(m === "vibe" ? "ask" : "manual")}>{m === "vibe" ? "Continue with VibeCloud" : "Continue with Manual"}</Btn>
       </Centered>
     </ConsoleFrame>
   );
 }
 
-function KitsScreen({ ctx }: SP) {
+function KitsScreen() {
+  const ctx = useNav();
   const kits: [string, string, IconName[], string][] = [
     ["Customer support chatbot", "Answers from your help center with guardrails on.", ["app", "agent", "kb"], "From $44.60/mo + usage"],
     ["RAG knowledge assistant", "Search and chat over your own documents.", ["agent", "kb", "spaces"], "From $24.60/mo + usage"],
@@ -1166,19 +1318,50 @@ function KitsScreen({ ctx }: SP) {
   ];
   return (
     <ConsoleFrame active="Starter kits">
-      <PageHeader title="Starter kits" sub="Examples of what a project can be. Picking one fills in the description; the rest of the flow is the same." />
+      <BackLink />
+      <PageHeader title="Starter kits" sub="Examples of what a project can be. Picking one fills in the description; the rest of the flow is the same as any new project." />
       <div style={{ display: "flex", gap: 14 }}>
-        {kits.map(([t, d, ics, p], i) => (
-          <div key={t} onClick={i === 0 ? ctx.next : undefined} style={{ flex: 1, background: DO.white, borderRadius: 8, padding: 18, display: "flex", flexDirection: "column", gap: 10, cursor: i === 0 ? "pointer" : "default", border: i === 0 ? `2px solid ${DO.blue}` : `1px solid ${DO.border}` }}>
-            <div style={{ display: "flex", gap: 6 }}>{ics.map((ic) => <IconTile key={ic} name={ic} size={26} />)}</div>
-            <T size={15} weight={700}>{t}</T>
-            <T size={12.5} color={DO.text2}>{d}</T>
-            <T size={12} color={DO.text3}>{p}</T>
-            <div style={{ marginTop: "auto" }}><Btn variant={i === 0 ? "primary" : "secondary"} full>Use as starting point</Btn></div>
-          </div>
-        ))}
+        {kits.map(([t, d, ics, p], i) => {
+          const card = (
+            <div onClick={i === 0 ? () => ctx.pickScenario("kit", "analysis") : undefined} style={{ height: "100%", background: DO.white, borderRadius: 8, padding: 18, display: "flex", flexDirection: "column", gap: 10, cursor: i === 0 ? "pointer" : "default", border: i === 0 ? `2px solid ${DO.blue}` : `1px solid ${DO.border}`, opacity: i === 0 ? 1 : 0.7 }}>
+              <div style={{ display: "flex", gap: 6 }}>{ics.map((ic) => <IconTile key={ic} name={ic} size={26} />)}</div>
+              <T size={15} weight={700}>{t}</T>
+              <T size={12.5} color={DO.text2}>{d}</T>
+              <T size={12} color={DO.text3}>{p}</T>
+              <div style={{ marginTop: "auto" }}><Btn variant={i === 0 ? "primary" : "secondary"} full disabled={i !== 0}>Use as starting point</Btn></div>
+            </div>
+          );
+          return (
+            <div key={t} style={{ flex: 1, minWidth: 0 }}>
+              {i === 0 ? <Tip text="Kits are just pre-filled descriptions. This one walks through a VibeCloud plan with guardrails." place="bottom" block>{card}</Tip> : card}
+            </div>
+          );
+        })}
       </div>
       <Field label="Or describe what you want" hint="A sentence is enough. Add a cost ceiling if you have one."><TextBox value="" /></Field>
+    </ConsoleFrame>
+  );
+}
+
+function EmptyScreen() {
+  const ctx = useNav();
+  const tiles: [IconName, string][] = [["droplet", "Droplets"], ["app", "App Platform"], ["db", "Databases"], ["spaces", "Spaces Object Storage"], ["kb", "Knowledge Bases"], ["agent", "Agents"]];
+  return (
+    <ConsoleFrame active="New project">
+      <PageHeader icon title="my-project" sub="Empty project · owner you" right={<Tip text="Empty projects use the same flow when you add to them. Try it from here." place="bottom"><Btn icon="plus" onClick={() => ctx.go("start")}>Add to this project</Btn></Tip>} />
+      <Tabs items={["Resources", "Activity", "Settings"]} active="Resources" />
+      <Card>
+        <SectionLabel>Create something new</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10 }}>
+          {tiles.map(([ic, t]) => (
+            <div key={t} style={{ display: "flex", gap: 10, alignItems: "center", padding: 12, borderRadius: 8, border: `1px solid ${DO.border}` }}>
+              <IconTile name={ic} />
+              <T size={12.5} weight={600}>{t}</T>
+            </div>
+          ))}
+        </div>
+        <T size={12} color={DO.text3}>These tiles work like today's Create menu. Add to this project opens the same flow as New project, with this project as context.</T>
+      </Card>
     </ConsoleFrame>
   );
 }
@@ -1189,17 +1372,20 @@ function KitsScreen({ ctx }: SP) {
 
 const WORKER: Line = { name: "worker-1", kind: "Droplet · 1 GB", why: "Runs the reminder job each morning. Uses a jobs table in db-1 as the queue.", price: 6, cli: "doctl compute droplet get worker-1" };
 
-function planMeter(sc: Scenario, g: Guards, spent: number, warn?: boolean) {
+function planMeter(sc: Scenario, g: Guards, spent: number, warn?: boolean, pauseOverride?: number) {
   const u = usageFor(sc, g);
-  if (!u.pauseAt) return undefined;
-  return { text: `Usage ${money(spent)} of ${money(u.pauseAt)} pause point`, pct: Math.min(100, (spent / u.pauseAt) * 100), warn };
+  const at = pauseOverride ?? u.pauseAt;
+  if (!at) return undefined;
+  return { text: `Usage ${money(spent)} of ${money(at)} pause point`, pct: Math.min(100, (spent / at) * 100), warn };
 }
 
-function AskScreen({ ctx }: SP) {
+function AskScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const u = usageFor(sc, ctx.guards);
   return (
     <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={3} />
       <PageHeader crumb={`New project · ${sc.project} · VibeCloud`} title="What should this project do?" sub="Say the outcome and a cost ceiling. We turn it into a priced plan you can read before anything is created." />
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -1219,22 +1405,26 @@ function AskScreen({ ctx }: SP) {
           </div>
           <T size={12} color={DO.text3}>Only these can change here. Everything else comes from the repo, the protections you kept, and your sentence.</T>
         </Card>
-        <Summary sc={sc} guards={ctx.guards} cta="Build plan" onCta={ctx.next} />
+        <Summary sc={sc} guards={ctx.guards} cta="Build plan" onCta={() => ctx.go("plan")} />
       </div>
     </ConsoleFrame>
   );
 }
 
-function PlanScreen({ ctx }: SP) {
+function PlanScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const u = usageFor(sc, g);
   const proof = g.hipaa && sc.hipaaProof ? sc.hipaaProof : sc.proof;
   return (
     <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={3} />
-      <PageHeader crumb={`New project · ${sc.project} · VibeCloud`} title={`Plan for ${sc.project}`} sub="Draft. Dashed boxes are not created and cost $0 until you approve. Click a box to see why it's there." right={<Badge tone="draft">Draft</Badge>} />
-      <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={linesFor(sc, g)} mode="draft" groupLabel={`Plan · ${sc.project}`} groupRight="draft · not created" meter={u.pauseAt ? { text: `Usage pauses at ${money(u.pauseAt)} · expected about ${money(u.estimate)}`, pct: (u.estimate / u.pauseAt) * 100 } : undefined} />
+      <PageHeader crumb={`New project · ${sc.project} · VibeCloud`} title={`Plan for ${sc.project}`} sub="Draft. Dashed boxes are not created and cost $0 until you approve." right={<Badge tone="draft">Draft</Badge>} />
+      <Tip text="Click any box to see why it's in the plan, what it costs, and the same object in doctl." place="top" block>
+        <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={linesFor(sc, g)} mode="draft" groupLabel={`Plan · ${sc.project}`} groupRight="draft · not created" meter={u.pauseAt ? { text: `Usage pauses at ${money(u.pauseAt)} · expected about ${money(u.estimate)}`, pct: (u.estimate / u.pauseAt) * 100 } : undefined} />
+      </Tip>
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <Card style={{ flex: 1, minWidth: 420 }}>
           <SectionLabel>What happens after you approve</SectionLabel>
@@ -1246,13 +1436,14 @@ function PlanScreen({ ctx }: SP) {
           <KV k="Undo" v="Every change can be undone for 72 hours." />
           <KV k="Leave" v="Export to Terraform or release the plan any time. Resources keep running." />
         </Card>
-        <Summary sc={sc} guards={g} cta="Continue to approval" onCta={ctx.next} />
+        <Summary sc={sc} guards={g} cta="Continue to approval" onCta={() => ctx.go("approve")} />
       </div>
     </ConsoleFrame>
   );
 }
 
-function ManualScreen({ ctx }: SP) {
+function ManualScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const catalog: [IconName, string, Line | null][] = [
@@ -1265,7 +1456,8 @@ function ManualScreen({ ctx }: SP) {
   ];
   const all = [...linesFor(sc, g), ...ctx.extra];
   return (
-    <ConsoleFrame active={sc.project} project={sc.project}>
+    <ConsoleFrame active="New project">
+      <BackLink />
       <Stepper at={3} />
       <PageHeader crumb={`New project · ${sc.project} · Manual`} title={sc.project} sub="Pick resources yourself. Protections and price stay on." icon />
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -1273,15 +1465,21 @@ function ManualScreen({ ctx }: SP) {
           <SectionLabel>{`Resources you picked (${all.length})`}</SectionLabel>
           <DTable headers={["Name", "Type", "Monthly"]} rows={all.map((l) => [<T weight={600}>{l.name}</T>, l.kind, l.price ? `${money(l.price)}/mo` : "Variable"])} tones={all.map(() => "draft")} />
           {!g.backup && (
-            <Banner tone="warn" title="api-1 has no backups">ledger-db is backed up daily by Managed Databases, but the Droplet is not. For payment software, turn on weekly backups.</Banner>
+            <>
+              <Banner tone="warn" title="api-1 has no backups">ledger-db is backed up daily by Managed Databases, but the Droplet is not. For payment software, turn on weekly backups.</Banner>
+              <div>
+                <Tip text="Manual mode still warns you. Fix it in one click and watch the Summary update." place="right">
+                  <Btn variant="secondary" onClick={() => ctx.setGuard("backup", true)}>Turn on backups · +$4.80/mo</Btn>
+                </Tip>
+              </div>
+            </>
           )}
-          {!g.backup && <div><Btn variant="secondary" onClick={() => ctx.setGuard("backup", true)}>Turn on backups · +$4.80/mo</Btn></div>}
           <SectionLabel>Add a resource</SectionLabel>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10 }}>
             {catalog.map(([ic, label, line]) => {
               const added = line && ctx.extra.some((e) => e.name === line.name);
               return (
-                <div key={label} onClick={line && !added ? () => ctx.addExtra(line) : undefined} style={{ display: "flex", gap: 10, alignItems: "center", padding: 12, borderRadius: 8, background: DO.white, border: `1px solid ${DO.border}`, cursor: line && !added ? "pointer" : "default", opacity: line ? 1 : 0.6 }}>
+                <div key={label} onClick={line && !added ? () => ctx.addExtra(line) : undefined} style={{ display: "flex", gap: 10, alignItems: "center", padding: 12, borderRadius: 8, background: DO.white, border: `1px solid ${DO.border}`, cursor: line && !added ? "pointer" : "default", opacity: line ? 1 : 0.55 }}>
                   <IconTile name={ic} />
                   <T size={12.5} weight={600} style={{ flex: 1 }}>{label}</T>
                   {added ? <Ico name="check" size={14} color={DO.green} width={2} /> : <Ico name="plus" size={14} color={DO.blue} />}
@@ -1290,30 +1488,42 @@ function ManualScreen({ ctx }: SP) {
             })}
           </div>
         </div>
-        <Summary sc={sc} guards={g} extra={ctx.extra} cta="Review and approve" onCta={ctx.next} />
+        <Summary sc={sc} guards={g} extra={ctx.extra} cta="Review and approve" onCta={() => ctx.go("approve")} />
       </div>
     </ConsoleFrame>
   );
 }
 
-function ApproveScreen({ ctx }: SP) {
+function ApproveScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const scopes = g.hipaa && sc.hipaaScopes ? sc.hipaaScopes : sc.scopes;
-  const isChange = ctx.path.id === "F";
-  const extra = isChange ? [WORKER] : ctx.extra;
+  const isChange = ctx.change;
+  const extra = isChange ? [...ctx.extra.filter((e) => e.name !== WORKER.name), WORKER] : ctx.extra;
   const lines = [...linesFor(sc, g), ...extra];
   const u = usageFor(sc, g);
-  const vibe = ctx.path.mode === "vibe";
+  const vibe = ctx.mode === "vibe";
+  const approve = () => {
+    if (isChange) {
+      if (!ctx.extra.some((e) => e.name === WORKER.name)) ctx.addExtra(WORKER);
+      ctx.setChange(false);
+      ctx.go("project");
+    } else {
+      ctx.markCreated();
+      ctx.go("deploy");
+    }
+  };
   return (
-    <ConsoleFrame active={isChange ? sc.project : "New project"} project={isChange ? sc.project : undefined}>
+    <ConsoleFrame active={isChange ? sc.project : "New project"}>
+      <BackLink />
       {!isChange && <Stepper at={4} />}
       <PageHeader crumb={isChange ? `${sc.project} · Add to this project` : `New project · ${sc.project}`} title={isChange ? "Approve change" : `Approve ${sc.project}`} sub="Nothing bills until you approve. This is the only step that creates anything." />
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 420, display: "flex", flexDirection: "column", gap: 14 }}>
           <Card>
             <SectionLabel>This will</SectionLabel>
-            <KV k={isChange ? "Create" : "Create"} v={isChange ? "1 Droplet (worker-1) and change 2 existing resources" : `${lines.length} resources: ${lines.map((l) => l.name).join(", ")}`} />
+            <KV k="Create" v={isChange ? "1 Droplet (worker-1) and change 2 existing resources" : `${lines.length} resources: ${lines.map((l) => l.name).join(", ")}`} />
             <KV k="Monthly cost" v={`${money(fixedTotal(sc, g, extra))}/mo${u.pauseAt ? " + usage" : ""}`} />
             {u.pauseAt > 0 && <KV k="Pause point" v={money(u.pauseAt)} />}
             {vibe && <KV k="Checks" v="Hourly, starting right after deploy" />}
@@ -1328,29 +1538,29 @@ function ApproveScreen({ ctx }: SP) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {scopes.map((s0) => (
-                <span key={s0} style={{ fontFamily: "monospace", fontSize: 11.5, borderRadius: 4, padding: "2px 6px", background: ctx.missingScope && s0 === scopes[1] ? DO.redBg : DO.page, color: ctx.missingScope && s0 === scopes[1] ? DO.red : DO.text2, textDecoration: ctx.missingScope && s0 === scopes[1] ? "line-through" : "none", border: `1px solid ${DO.border}` }}>{s0}</span>
-              ))}
+              {scopes.map((s0) => {
+                const miss = ctx.missingScope && s0 === scopes[1];
+                return <span key={s0} style={{ fontFamily: "monospace", fontSize: 11.5, borderRadius: 4, padding: "2px 6px", background: miss ? DO.redBg : DO.page, color: miss ? DO.red : DO.text2, textDecoration: miss ? "line-through" : "none", border: `1px solid ${DO.border}` }}>{s0}</span>;
+              })}
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <Switch on={ctx.missingScope} onChange={ctx.setMissingScope} />
               <T size={12} color={DO.text2}>Show what happens if your role can't grant a scope</T>
             </div>
-            {ctx.missingScope && (
-              <Banner tone="bad" title={`Can't approve: your role can't grant ${scopes[1]}`}>Nothing has been created. Ask a team owner to approve, or remove the part that needs it.</Banner>
-            )}
+            {ctx.missingScope && <Banner tone="bad" title={`Can't approve: your role can't grant ${scopes[1]}`}>Nothing has been created. Ask a team owner to approve, or remove the part that needs it.</Banner>}
           </Card>
-          {g.hipaa && (
-            <Banner tone="warn" title="BAA not signed yet">Resources can deploy now. Don't store real patient data until DigitalOcean's Business Associate Agreement is signed. Request it through Sales or Support.</Banner>
-          )}
+          {g.hipaa && <Banner tone="warn" title="BAA not signed yet">Resources can deploy now. Don't store real patient data until DigitalOcean's Business Associate Agreement is signed. Request it through Sales or Support.</Banner>}
         </div>
-        <Summary sc={sc} guards={g} extra={extra} cta={isChange ? "Approve change" : "Approve and deploy"} onCta={ctx.next} disabled={ctx.missingScope} />
+        <Tip text="The only step that bills. Everything before this was free to explore." place="top" show={!ctx.missingScope}>
+          <Summary sc={sc} guards={g} extra={extra} cta={isChange ? "Approve change" : "Approve and deploy"} onCta={approve} disabled={ctx.missingScope} />
+        </Tip>
       </div>
     </ConsoleFrame>
   );
 }
 
-function DeployScreen({ ctx }: SP) {
+function DeployScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const lines = [...linesFor(sc, g), ...ctx.extra];
@@ -1387,20 +1597,30 @@ function DeployScreen({ ctx }: SP) {
           <Mono>{proof.a}</Mono>
           {g.cspm && <Badge tone="ok">CSPM scan: 0 critical, 0 high</Badge>}
           <T size={12} color={DO.text3}>If any step had failed, everything created so far would have been removed and nothing billed.</T>
-          <Btn full onClick={ctx.next}>Go to project</Btn>
+          <Tip text="Success means a real request got a real answer, not just that resources exist." place="top" block>
+            <Btn full onClick={() => ctx.go("project")}>Go to project</Btn>
+          </Tip>
         </Card>
       </div>
     </ConsoleFrame>
   );
 }
 
-function ProjectShell({ ctx, tab, banner, children, right }: { ctx: Ctx; tab: string; banner?: ReactNode; children: ReactNode; right?: ReactNode }) {
+function ProjectShell({ tab, banner, children, right }: { tab: string; banner?: ReactNode; children: ReactNode; right?: ReactNode }) {
+  const ctx = useNav();
   const sc = ctx.sc;
-  const vibe = ctx.path.mode === "vibe";
+  const vibe = ctx.mode === "vibe";
+  const to: Record<string, ScreenId> = { Resources: "project", Activity: "undo", Settings: "export" };
   return (
-    <ConsoleFrame active={sc.project} project={sc.project}>
+    <ConsoleFrame active={sc.project}>
       <PageHeader icon title={sc.project} sub={`${vibe ? "Managed by a VibeCloud plan" : "Built manually"} · owner ${sc.owner}`} right={right} />
-      <Tabs items={["Resources", "Activity", "Settings"]} active={tab} />
+      <div style={{ display: "flex", gap: 22, borderBottom: `1px solid ${DO.border}` }}>
+        {["Resources", "Activity", "Settings"].map((it) => (
+          <div key={it} onClick={() => ctx.go(to[it])} style={{ padding: "8px 2px", fontSize: 13, cursor: "pointer", fontWeight: it === tab ? 600 : 400, color: it === tab ? DO.text : DO.text2, borderBottom: it === tab ? `2px solid ${DO.blue}` : "2px solid transparent", marginBottom: -1 }}>
+            {it}
+          </div>
+        ))}
+      </div>
       {banner}
       {children}
     </ConsoleFrame>
@@ -1442,31 +1662,32 @@ function ViewToggle({ view, setView }: { view: "map" | "list"; setView: (v: "map
   );
 }
 
-function ProjectScreen({ ctx }: SP) {
+function ProjectScreen() {
+  const ctx = useNav();
   const [view, setView] = useState<"map" | "list">("map");
   const sc = ctx.sc;
   const g = ctx.guards;
-  const vibe = ctx.path.mode === "vibe";
-  const extra = ctx.step > 0 ? ctx.extra : [];
-  const lines = [...linesFor(sc, g), ...extra];
+  const vibe = ctx.mode === "vibe";
+  const lines = [...linesFor(sc, g), ...ctx.extra];
   const u = usageFor(sc, g);
-  const nextIsAdd = ctx.path.steps[ctx.step + 1] === "add";
-  const nextIsAlert = ctx.path.steps[ctx.step + 1] === "alertEmail";
+  const canChange = sc.id === "health" && g.hipaa && !ctx.extra.some((e) => e.name === WORKER.name);
+  const addBtn = <Btn icon="plus" variant={canChange ? "primary" : "secondary"} onClick={() => (sc.id === "health" && g.hipaa ? (ctx.setChange(true), ctx.go("add")) : ctx.go("start"))}>Add to this project</Btn>;
   return (
     <ProjectShell
-      ctx={ctx}
       tab="Resources"
-      right={<Btn icon="plus" variant={nextIsAdd ? "primary" : "secondary"} onClick={nextIsAdd ? ctx.next : undefined}>Add to this project</Btn>}
-      banner={nextIsAlert ? <Banner tone="ok" title="Day 9 · all checks passing">Continue to see what happens when one fails.</Banner> : undefined}
+      right={canChange ? <Tip text="Add a feature to a live project. The same flow returns a change plan on top of what exists." place="bottom">{addBtn}</Tip> : addBtn}
+      banner={ctx.extra.some((e) => e.name === WORKER.name) && sc.id === "health" ? <Banner tone="ok" title="Change applied">worker-1 is live and sending reminders. Undo is available for 72 hours in Activity.</Banner> : undefined}
     >
       <div style={{ display: "flex", gap: 12 }}>
-        <Card pad={14} style={{ flex: 1, gap: 2 }}><T size={12} color={DO.text3}>Monthly cost</T><T size={18} weight={700}>{`${money(fixedTotal(sc, g, extra))}${u.pauseAt ? " + usage" : ""}`}</T></Card>
+        <Card pad={14} style={{ flex: 1, gap: 2 }}><T size={12} color={DO.text3}>Monthly cost</T><T size={18} weight={700}>{`${money(fixedTotal(sc, g, ctx.extra))}${u.pauseAt ? " + usage" : ""}`}</T></Card>
         <Card pad={14} style={{ flex: 1, gap: 2 }}><T size={12} color={DO.text3}>{vibe ? "Checks" : "Protections"}</T><T size={18} weight={700}>{vibe ? "Passing · hourly" : `${sc.guards.filter((x) => g[x.id]).length} on`}</T></Card>
         <Card pad={14} style={{ flex: 1, gap: 2 }}><T size={12} color={DO.text3}>{vibe ? "Next brief" : "Last CSPM scan"}</T><T size={18} weight={700}>{vibe ? "Monday" : "0 critical"}</T></Card>
       </div>
-      <ViewToggle view={view} setView={setView} />
+      <Tip text="Map shows how the parts connect. List is the resource view you know. Click a box for details." place="right" show={sc.id === "fin"}>
+        <ViewToggle view={view} setView={setView} />
+      </Tip>
       {view === "map" ? (
-        <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={lines} mode="live" groupLabel={`${vibe ? "Plan" : "Resources"} · ${sc.project}`} groupRight={vibe ? "verified · checked hourly" : "you manage"} meter={vibe ? planMeter(sc, g, 3.4) : undefined} />
+        <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={lines} mode="live" groupLabel={`${vibe ? "Plan" : "Resources"} · ${sc.project}`} groupRight={vibe ? "verified · checked hourly" : "you manage"} meter={vibe ? planMeter(sc, g, 3.4, false, ctx.raised && sc.id === "kit" ? 45 : undefined) : undefined} />
       ) : (
         <ResourceList sc={sc} lines={lines} vibe={vibe} />
       )}
@@ -1478,11 +1699,13 @@ function ProjectScreen({ ctx }: SP) {
 /* Screens: keep running and leave                                     */
 /* ------------------------------------------------------------------ */
 
-function AddScreen({ ctx }: SP) {
+function AddScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const lines = linesFor(sc, ctx.guards);
   return (
-    <ProjectShell ctx={ctx} tab="Resources">
+    <ProjectShell tab="Resources">
+      <BackLink />
       <Centered width={720}>
         <Card>
           <T size={18} weight={700} color={DO.navy}>Add to this project</T>
@@ -1493,10 +1716,11 @@ function AddScreen({ ctx }: SP) {
             {lines.map((l) => <Chip key={l.name}>{l.name}</Chip>)}
             <Chip>HIPAA mode on</Chip>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Btn onClick={ctx.next}>Build change plan</Btn>
-            <Btn variant="secondary">Browse starter kits</Btn>
-            <Btn variant="link">Create a resource manually</Btn>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <Tip text="The plan comes back as a change: new parts dashed, existing parts kept." place="bottom">
+              <Btn onClick={() => ctx.go("diff")}>Build change plan</Btn>
+            </Tip>
+            <Btn variant="secondary" onClick={() => ctx.go("kits")}>Browse starter kits</Btn>
           </div>
         </Card>
       </Centered>
@@ -1504,16 +1728,18 @@ function AddScreen({ ctx }: SP) {
   );
 }
 
-function DiffScreen({ ctx }: SP) {
+function DiffScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const lines = [...linesFor(sc, g), WORKER];
   return (
-    <ProjectShell ctx={ctx} tab="Resources" right={<Badge tone="draft">Change draft</Badge>}>
+    <ProjectShell tab="Resources" right={<Badge tone="draft">Change draft</Badge>}>
+      <BackLink />
       <T size={16} weight={700}>Change plan: appointment reminders</T>
       <MapWithDrawer map={MAPS["health-hipaa"]} lines={lines} mode="live" draftIds={["worker-1"]} groupLabel={`Plan · ${sc.project}`} groupRight="1 new part · 2 changed" />
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 420 }}>
+        <div style={{ flex: 1, minWidth: 420, display: "flex", flexDirection: "column", gap: 10 }}>
           <DTable
             headers={["Change", "Part", "Cost"]}
             rows={[
@@ -1523,38 +1749,43 @@ function DiffScreen({ ctx }: SP) {
               [<Badge tone="warn">Not used</Badge>, "Managed Valkey queue · not HIPAA-eligible", "$0"],
             ]}
           />
+          <T size={12} color={DO.text3}>A queue would normally use Managed Valkey. HIPAA mode keeps the queue inside db-1 instead.</T>
         </div>
-        <Summary sc={sc} guards={g} extra={[WORKER]} cta="Continue to approval" onCta={() => { if (!ctx.extra.some((e) => e.name === WORKER.name)) ctx.addExtra(WORKER); ctx.next(); }} />
+        <Summary sc={sc} guards={g} extra={[...ctx.extra, WORKER]} cta="Continue to approval" onCta={() => ctx.go("approve")} />
       </div>
     </ProjectShell>
   );
 }
 
-function AlertEmailScreen({ ctx }: SP) {
+function AlertEmailScreen() {
+  const ctx = useNav();
   return (
     <EmailFrame>
-      <T size={12} color={DO.text3}>{`To ${ctx.sc.owner} · Today 09:14`}</T>
+      <T size={12} color={DO.text3}>{`To ${ctx.sc.owner} · Day 9 · 09:14`}</T>
       <T size={18} weight={700}>support-bot stopped answering</T>
       <Banner tone="bad" title="Hourly check failed at 09:14">The test question got a 401 from agent. Visitors see an error in the chat widget.</Banner>
       <KV k="Broken part" v="agent (Agent Platform)" />
       <KV k="Last change" v="Access key deleted by alex@acme.io at 08:52" />
       <KV k="Proposed fix" v="Create a new access key and update chatbot's AGENT_KEY. $0. Can be undone for 72 hours." />
       <div style={{ display: "flex", gap: 10 }}>
-        <Btn onClick={ctx.next}>Review fix in console</Btn>
+        <Tip text="The owner hears within the hour, with the cause and a priced fix. Open it in the console." place="bottom">
+          <Btn onClick={() => ctx.go("alertConsole")}>Review fix in console</Btn>
+        </Tip>
         <Btn variant="secondary">Reply to alex@acme.io</Btn>
       </div>
-      <T size={11.5} color={DO.text3}>You get this because you own the support-bot plan. Change alert settings in the project.</T>
+      <T size={11.5} color={DO.text3}>You get this because you own the support-bot plan. We never repair without your approval.</T>
     </EmailFrame>
   );
 }
 
-function AlertConsoleScreen({ ctx }: SP) {
+function AlertConsoleScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const lines = linesFor(sc, g);
   const overrides: Record<string, NodeState> = { agent: ["bad", "Access key deleted"], chatbot: ["warn", "Getting 401s"] };
   return (
-    <ProjectShell ctx={ctx} tab="Resources" banner={<Banner tone="bad" title="1 check failing since 09:14">agent's access key was deleted by alex@acme.io at 08:52. chatbot can't reach it.</Banner>}>
+    <ProjectShell tab="Resources" banner={<Banner tone="bad" title="1 check failing since 09:14">agent's access key was deleted by alex@acme.io at 08:52. chatbot can't reach it.</Banner>}>
       <MapWithDrawer map={MAPS.kit} lines={lines} mode="live" overrides={overrides} groupLabel={`Plan · ${sc.project}`} groupRight="check failed" meter={planMeter(sc, g, 3.4)} />
       <Card>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1564,16 +1795,18 @@ function AlertConsoleScreen({ ctx }: SP) {
         <DTable headers={["Step", "Part", "Cost"]} rows={[["Create a new access key", "agent", "$0"], ["Set AGENT_KEY and redeploy", "chatbot", "$0"], ["Ask the test question again", "chatbot → agent", "$0"]]} />
         <T size={12} color={DO.text3}>Can be undone for 72 hours. The deleted key stays deleted.</T>
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn onClick={ctx.next}>Apply fix</Btn>
-          <Btn variant="secondary">Dismiss</Btn>
+          <Tip text="Apply the fix. The map turns green and the change appears in Activity with an undo." place="right">
+            <Btn onClick={() => { ctx.setFixed(true); ctx.go("project"); }}>Apply fix</Btn>
+          </Tip>
+          <Btn variant="secondary" onClick={() => ctx.go("project")}>Dismiss</Btn>
         </div>
       </Card>
-      <ResourceList sc={sc} lines={lines} vibe tones={overrides} />
     </ProjectShell>
   );
 }
 
-function BriefScreen({ ctx }: SP) {
+function BriefScreen() {
+  const ctx = useNav();
   return (
     <EmailFrame>
       <T size={12} color={DO.text3}>{`To ${ctx.sc.owner} · Monday 08:00`}</T>
@@ -1589,81 +1822,104 @@ function BriefScreen({ ctx }: SP) {
         rows={[
           ["help.acme.io added /guides (42 pages). Re-index help-kb.", "about $0.02 once", "Yes"],
           ["Newer model answers 9 of 10 test questions vs 8 of 10. Same price.", "$0", "Yes"],
-          ["CSPM not needed: no Droplets or databases in this plan.", "—", "—"],
         ]}
       />
       <div style={{ display: "flex", gap: 10 }}>
-        <Btn onClick={ctx.next}>Review drafts</Btn>
-        <Btn variant="secondary">Open project</Btn>
+        <Tip text="Every upkeep item is a draft with a price and an undo. Nothing changes without approval." place="bottom">
+          <Btn onClick={() => ctx.go("project")}>Review drafts</Btn>
+        </Tip>
+        <Btn variant="secondary" onClick={() => ctx.go("project")}>Open project</Btn>
       </div>
     </EmailFrame>
   );
 }
 
-function PauseScreen({ ctx }: SP) {
+function PauseScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const u = usageFor(sc, g);
   return (
-    <ProjectShell ctx={ctx} tab="Resources" banner={<Banner tone="warn" title={`Usage paused at ${money(u.pauseAt)}`}>A traffic spike used this month's usage budget on the 21st. The chatbot stays up and shows a "Contact support" link instead of answers. Fixed costs keep billing. This is a pause point, not a bill cap.</Banner>}>
+    <ProjectShell tab="Resources" banner={<Banner tone="warn" title={`Usage paused at ${money(u.pauseAt)}`}>A traffic spike used this month's usage budget on the 21st. The chatbot stays up and shows a "Contact support" link instead of answers. Fixed costs keep billing. This is a pause point, not a bill cap.</Banner>}>
       <MapWithDrawer map={MAPS.kit} lines={linesFor(sc, g)} mode="live" overrides={{ agent: ["warn", "Paused · usage limit"], "help-kb": ["warn", "Paused · no new queries"] }} groupLabel={`Plan · ${sc.project}`} groupRight="paused" meter={planMeter(sc, g, u.pauseAt, true)} />
       <Card>
         <SectionLabel>Choose what happens next</SectionLabel>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn onClick={ctx.next}>Raise pause point to $45</Btn>
-          <Btn variant="secondary">Stay paused until Oct 1</Btn>
-          <Btn variant="link">See what used it</Btn>
+          <Tip text="Raising the pause point is a change too, so it can be undone from Activity." place="top">
+            <Btn onClick={() => { ctx.setRaised(true); ctx.go("project"); }}>Raise pause point to $45</Btn>
+          </Tip>
+          <Btn variant="secondary" onClick={() => ctx.go("project")}>Stay paused until Oct 1</Btn>
         </div>
       </Card>
     </ProjectShell>
   );
 }
 
-function UndoScreen({ ctx }: SP) {
-  const rows: [string, string, string, boolean][] = [
-    ["Today 10:02", "Raised pause point $30 → $45", ctx.sc.owner, true],
-    ["Mon 08:40", "Re-indexed help-kb (/guides)", "plan (approved by maya)", true],
-    ["Day 9 09:31", "New agent access key, chatbot redeployed", "plan (approved by maya)", false],
-    ["Day 1 14:12", "Created support-bot plan", ctx.sc.owner, false],
-  ];
+function UndoScreen() {
+  const ctx = useNav();
+  const sc = ctx.sc;
+  const [undone, setUndone] = useState<string[]>([]);
+  const rows: [string, string, string, boolean][] = [];
+  if (sc.id === "kit") {
+    if (ctx.raised) rows.push(["Month 3", "Raised pause point $30 → $45", sc.owner, true]);
+    if (ctx.fixed) rows.push(["Day 9 09:31", "New agent access key, chatbot redeployed", "plan (approved by you)", true]);
+  }
+  if (ctx.extra.some((e) => e.name === WORKER.name)) rows.push(["Today", "Added worker-1 for appointment reminders", "plan (approved by you)", true]);
+  ctx.extra.filter((e) => e.name !== WORKER.name).forEach((e) => rows.push(["Day 1", `Added ${e.name}`, sc.owner, false]));
+  rows.push(["Day 1", `Created ${sc.project}`, sc.owner, false]);
+  const vibe = ctx.mode === "vibe";
   return (
-    <ProjectShell ctx={ctx} tab="Activity">
+    <ProjectShell tab="Activity">
       <DTable
-        headers={["When", "Change", "By", "Undo"]}
-        rows={rows.map((r) => [r[0], <T weight={600}>{r[1]}</T>, <T size={12} color={DO.text2}>{r[2]}</T>, r[3] ? <Btn variant="secondary">Undo</Btn> : <T size={12} color={DO.text3}>Window closed (72 h)</T>])}
+        headers={["When", "Change", "By", vibe ? "Undo" : ""]}
+        rows={rows.map((r) => [
+          r[0],
+          <T weight={600} style={{ textDecoration: undone.includes(r[1]) ? "line-through" : "none" }}>{r[1]}</T>,
+          <T size={12} color={DO.text2}>{r[2]}</T>,
+          !vibe ? "" : undone.includes(r[1]) ? <Badge tone="neutral">Undone</Badge> : r[3] ? <Btn variant="secondary" onClick={() => setUndone([...undone, r[1]])}>Undo</Btn> : <T size={12} color={DO.text3}>Window closed (72 h)</T>,
+        ])}
         tones={rows.map((r) => (r[3] ? "info" : "neutral"))}
       />
-      <T size={12} color={DO.text3}>Undo restores the previous settings and resources. Deleted data (like a removed access key) can't come back, and the undo says so before you click.</T>
-      <div><Btn onClick={ctx.next}>Go to Settings</Btn></div>
+      {vibe && <T size={12} color={DO.text3}>Undo restores the previous settings and resources. Deleted data, like a removed access key, can't come back, and the undo says so before you click.</T>}
     </ProjectShell>
   );
 }
 
-function ExportScreen({ ctx }: SP) {
+function ExportScreen() {
+  const ctx = useNav();
   const [released, setReleased] = useState(false);
   const sc = ctx.sc;
+  const lines = [...linesFor(sc, ctx.guards), ...ctx.extra];
+  const tf = lines.map((l) => `resource "${l.kind.startsWith("Droplet") ? "digitalocean_droplet" : l.kind.startsWith("App") ? "digitalocean_app" : l.kind.startsWith("Load") ? "digitalocean_loadbalancer" : l.kind.startsWith("Spaces") ? "digitalocean_spaces_bucket" : l.kind.includes("Postgres") || l.kind.includes("Valkey") ? "digitalocean_database_cluster" : l.kind.startsWith("Agent") ? "digitalocean_genai_agent" : "digitalocean_genai_knowledge_base"}" "${l.name.replace(/-/g, "_")}" { ... }`).join("\n");
   return (
-    <ProjectShell ctx={ctx} tab="Settings">
+    <ProjectShell tab="Settings">
       <Card>
         <SectionLabel>Export as Terraform</SectionLabel>
-        <T size={12.5} color={DO.text2}>A snapshot of every resource in the plan, as it runs today. Use it to move to your own pipeline.</T>
-        <Mono>{`resource "digitalocean_app" "chatbot" {\n  spec { name = "support-bot" region = "nyc" }\n}\nresource "digitalocean_genai_agent" "agent" { ... }\nresource "digitalocean_genai_knowledge_base" "help_kb" { ... }`}</Mono>
+        <T size={12.5} color={DO.text2}>A snapshot of every resource in the project, as it runs today. Use it to move to your own pipeline.</T>
+        <Mono>{tf}</Mono>
         <div><Btn variant="secondary" icon="doc">Download main.tf</Btn></div>
       </Card>
-      <Card>
-        <SectionLabel>Release plan</SectionLabel>
-        <T size={12.5} color={DO.text2}>Stops checks, briefs and the pause point. Every resource keeps running and billing as a normal resource. The plan credential is revoked.</T>
-        {released ? (
-          <Banner tone="ok" title="Plan released">{`${linesFor(sc, ctx.guards).length} resources keep running in ${sc.project}. You manage them from here on.`}</Banner>
-        ) : (
-          <div><Btn variant="danger" onClick={() => setReleased(true)}>Release plan</Btn></div>
-        )}
-      </Card>
+      {ctx.mode === "vibe" && (
+        <Card>
+          <SectionLabel>Release plan</SectionLabel>
+          <T size={12.5} color={DO.text2}>Stops checks, briefs and the pause point. Every resource keeps running and billing as a normal resource. The plan credential is revoked.</T>
+          {released ? (
+            <Banner tone="ok" title="Plan released">{`${lines.length} resources keep running in ${sc.project}. You manage them from here on.`}</Banner>
+          ) : (
+            <div>
+              <Tip text="Leaving is one click, and nothing is deleted." place="right">
+                <Btn variant="danger" onClick={() => setReleased(true)}>Release plan</Btn>
+              </Tip>
+            </div>
+          )}
+        </Card>
+      )}
     </ProjectShell>
   );
 }
 
-function AgentScreen({ ctx }: SP) {
+function AgentScreen() {
+  const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
   const bubble = (who: string, body: ReactNode, dark?: boolean) => (
@@ -1690,7 +1946,9 @@ function AgentScreen({ ctx }: SP) {
               <Badge tone="warn">BAA pending</Badge>
             </div>
             <T size={11.5} color={DO.text3}>Agents can draft. Only a person with the right role can approve.</T>
-            <Btn full onClick={ctx.next}>Open in console to approve</Btn>
+            <Tip text="Same plan as the console flow. Approval always happens with a person in the console." place="top" block>
+              <Btn full onClick={() => ctx.go("approve")}>Open in console to approve</Btn>
+            </Tip>
           </div>
           {bubble("Also works from the terminal", <span style={{ fontFamily: "monospace", fontSize: 11.5 }}>{`doctl plans create --repo ${sc.repo} --hipaa --budget 80`}</span>, true)}
         </>
@@ -1699,16 +1957,12 @@ function AgentScreen({ ctx }: SP) {
   );
 }
 
-const RENDER: Record<ScreenId, (p: SP) => ReactNode> = {
+const RENDER: Record<ScreenId, () => ReactNode> = {
   home: HomeScreen, start: StartScreen, github: GithubScreen, analysis: AnalysisScreen, compliance: ComplianceScreen, mode: ModeScreen, kits: KitsScreen,
-  ask: AskScreen, plan: PlanScreen, manual: ManualScreen, approve: ApproveScreen, deploy: DeployScreen, project: ProjectScreen, add: AddScreen, diff: DiffScreen,
-  alertEmail: AlertEmailScreen, alertConsole: AlertConsoleScreen, brief: BriefScreen, pause: PauseScreen, undo: UndoScreen, export: ExportScreen, agent: AgentScreen,
+  empty: EmptyScreen, ask: AskScreen, plan: PlanScreen, manual: ManualScreen, approve: ApproveScreen, deploy: DeployScreen, project: ProjectScreen,
+  add: AddScreen, diff: DiffScreen, alertEmail: AlertEmailScreen, alertConsole: AlertConsoleScreen, brief: BriefScreen, pause: PauseScreen,
+  undo: UndoScreen, export: ExportScreen, agent: AgentScreen,
 };
-
-function ScreenBody({ id, ctx }: { id: ScreenId; ctx: Ctx }) {
-  const C = RENDER[id];
-  return <C ctx={ctx} />;
-}
 
 function defaultGuards(sc: Scenario): Guards {
   const g: Guards = {};
@@ -1716,135 +1970,131 @@ function defaultGuards(sc: Scenario): Guards {
   return g;
 }
 
-export default function DoConsolePrototype() {
-  const theme = useHostTheme();
-  const [pid, setPid] = useState<PathId>("A");
-  const [i, setI] = useState(0);
-  const path = FLOWS.find((p) => p.id === pid) ?? FLOWS[0];
-  const sc = SCENARIOS[path.scenario];
-  const [guards, setGuards] = useState<Guards>(defaultGuards(SCENARIOS.health));
-  const [mode, setMode] = useState<"vibe" | "manual">("vibe");
-  const [missingScope, setMissingScope] = useState(false);
-  const [extra, setExtra] = useState<Line[]>([]);
+/* ------------------------------------------------------------------ */
+/* Welcome                                                             */
+/* ------------------------------------------------------------------ */
 
-  const pick = (id: PathId) => {
-    const p = FLOWS.find((x) => x.id === id) ?? FLOWS[0];
-    setPid(id);
-    setI(0);
-    setGuards(defaultGuards(SCENARIOS[p.scenario]));
-    setMode(p.mode);
-    setMissingScope(false);
-    setExtra([]);
-  };
-
-  const idx = Math.min(i, path.steps.length - 1);
-  const id = path.steps[idx];
-  const meta = META[id];
-  const next = () => setI(Math.min(idx + 1, path.steps.length - 1));
-  const ctx: Ctx = {
-    sc, path, next, guards, setGuard: (k, v) => setGuards({ ...guards, [k]: v }), mode, setMode, missingScope, setMissingScope,
-    extra, addExtra: (l) => setExtra([...extra, l]), step: idx,
-  };
-  const usedIn = (sid: ScreenId) => FLOWS.filter((p) => p.steps.includes(sid)).map((p) => p.id).join(" ");
-
+function Welcome({ onPick, onClose }: { onPick: (id: ScenarioId) => void; onClose: () => void }) {
+  const tours: [ScenarioId, IconName, string, string][] = [
+    ["health", "shield", "Health records app", "GitHub repo with patient data. VibeCloud suggests HIPAA mode and swaps products to eligible ones."],
+    ["fin", "key", "Payments app, built by hand", "GitHub repo with payment data. Manual path with CSPM, firewall and backup warnings."],
+    ["kit", "agent", "Starter kit chatbot", "No repo. A starter kit becomes a VibeCloud plan, then see day 9, the weekly brief and the pause point."],
+  ];
   return (
-    <Stack gap={22} style={{ padding: 24, maxWidth: 1480 }}>
-      <Stack gap={6}>
-        <H1>One way to start a project on DigitalOcean</H1>
-        <Text tone="secondary">
-          Clickable prototype in the DigitalOcean console style. Projects and Launchpad merge into one flow: start from GitHub, a description, or empty, then build it
-          yourself (Manual) or let DigitalOcean propose it and keep watch (VibeCloud). The resource map from the Outcome Plans canvas shows the plan as a draft, then live
-          on the project page. Pick a path; buttons inside the screen move it forward.
-        </Text>
-      </Stack>
-
-      <Stack gap={10}>
-        <Row gap={8} align="center" wrap>
-          <Text size="small" tone="tertiary" style={{ width: 52 }}>Path</Text>
-          {FLOWS.map((p) => (
-            <Pill key={p.id} active={pid === p.id} onClick={() => pick(p.id)}>{`${p.id}  ${p.name}`}</Pill>
-          ))}
-        </Row>
-        <Row gap={6} align="center" wrap>
-          <Text size="small" tone="tertiary" style={{ width: 52 }}>Screen</Text>
-          {path.steps.map((st, k) => (
-            <Pill key={`${st}-${k}`} size="sm" active={k === idx} onClick={() => setI(k)}>{`${k + 1} ${META[st].title}`}</Pill>
-          ))}
-        </Row>
-      </Stack>
-
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <ScreenBody key={`${pid}-${idx}-${id}`} id={id} ctx={ctx} />
+    <div style={{ position: "fixed", inset: 0, background: "rgba(3,27,78,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, fontFamily: DO.font }}>
+      <div style={{ width: 620, background: DO.white, borderRadius: 12, padding: 28, display: "flex", flexDirection: "column", gap: 16, boxShadow: "0 20px 50px rgba(3,27,78,0.3)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 8, background: DO.blue, display: "flex", alignItems: "center", justifyContent: "center" }}><DoLogo size={20} /></div>
+          <T size={20} weight={700} color={DO.navy}>One way to start a project</T>
         </div>
-        <div style={{ width: 250, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12, paddingTop: 4 }}>
-          <Text size="small" tone="tertiary">{`${meta.stage} · ${idx + 1} of ${path.steps.length}`}</Text>
-          <Text weight="semibold">{meta.title}</Text>
-          <Text size="small" tone="secondary">{meta.note}</Text>
-          <Divider />
-          <Text size="small" tone="tertiary">{sc.context}</Text>
-          <Row gap={8}>
-            <Button variant="secondary" disabled={idx === 0} onClick={() => setI(idx - 1)}>Back</Button>
-            <Button variant="secondary" disabled={idx === path.steps.length - 1} onClick={next}>Next</Button>
-          </Row>
-          <div style={{ fontSize: 11, color: theme.text.quaternary }}>{`Also in paths: ${usedIn(id)}`}</div>
+        <T size={13.5} color={DO.text2}>Launchpad and New Project are one flow here. Start from a GitHub repo, a description or a starter kit, then build it yourself or let VibeCloud propose a priced plan and keep watch. Everything is clickable.</T>
+        <T size={12.5} weight={600} color={DO.text}>Pick a walkthrough</T>
+        {tours.map(([id, ic, t, d]) => (
+          <div key={id} onClick={() => onPick(id)} style={{ display: "flex", gap: 12, alignItems: "center", padding: 14, border: `1px solid ${DO.border}`, borderRadius: 8, cursor: "pointer" }}>
+            <IconTile name={ic} size={32} />
+            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+              <T weight={600}>{t}</T>
+              <T size={12} color={DO.text2}>{d}</T>
+            </div>
+            <Ico name="arrow" size={16} color={DO.blue} />
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <T size={12} color={DO.text3}>Blue tips point at the next click. Turn them off any time, bottom left.</T>
+          <Btn variant="link" onClick={onClose}>Explore on my own</Btn>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <Stack gap={10}>
-        <H2>Why one flow</H2>
-        <Grid columns={3} gap={16}>
-          <Stack gap={6}>
-            <Text weight="semibold">Today: two front doors, same result</Text>
-            <Text size="small" tone="secondary">
-              New Project creates an empty container, then asks you to assign resources. Launchpad asks for a project name again and deploys a fixed kit into a new project.
-              The project page adds a third entry with its "Create something new" tiles.
-            </Text>
-          </Stack>
-          <Stack gap={6}>
-            <Text weight="semibold">What Launchpad taught us</Text>
-            <Text size="small" tone="secondary">
-              Launchpad apps were redeployed 7% of the time vs 70% for ordinary apps. 41% were deleted within a day. Setup failures rose from 9% to 71% and nobody was told.
-            </Text>
-          </Stack>
-          <Stack gap={6}>
-            <Text weight="semibold">The change</Text>
-            <Text size="small" tone="secondary">
-              One noun (project), one entry (New project, or Add to this project), two ways to fill it. Both share the Summary panel and protection checks. Kits become examples.
-            </Text>
-          </Stack>
-        </Grid>
-      </Stack>
+/* ------------------------------------------------------------------ */
+/* App                                                                 */
+/* ------------------------------------------------------------------ */
 
-      <Stack gap={10}>
-        <H2>Every screen</H2>
-        <Table
-          headers={["Screen", "Stage", "Paths"]}
-          rows={(Object.keys(META) as ScreenId[]).map((k) => [META[k].title, META[k].stage, usedIn(k)])}
-          striped
+const IDS: ScenarioId[] = ["health", "fin", "kit"];
+
+export default function Prototype() {
+  const [stack, setStack] = useState<ScreenId[]>(["home"]);
+  const [scId, setScId] = useState<ScenarioId>("health");
+  const [guardsBy, setGuardsBy] = useState<Record<ScenarioId, Guards>>(() => Object.fromEntries(IDS.map((id) => [id, defaultGuards(SCENARIOS[id])])) as Record<ScenarioId, Guards>);
+  const [modeBy, setModeBy] = useState<Record<ScenarioId, Mode>>({ health: "vibe", fin: "vibe", kit: "vibe" });
+  const [extraBy, setExtraBy] = useState<Record<ScenarioId, Line[]>>({ health: [], fin: [], kit: [] });
+  const [missingScope, setMissingScope] = useState(false);
+  const [created, setCreated] = useState<ScenarioId[]>([]);
+  const [change, setChange] = useState(false);
+  const [fixed, setFixed] = useState(false);
+  const [raised, setRaised] = useState(false);
+  const [startChoice, setStartChoice] = useState<StartChoice>("github");
+  const [tour, setTour] = useState<ScenarioId | null>(null);
+  const [tips, setTips] = useState(true);
+  const [welcome, setWelcome] = useState(true);
+
+  const screen = stack[stack.length - 1];
+  const sc = SCENARIOS[scId];
+  const go = (s: ScreenId) => {
+    setStack((st) => [...st, s]);
+    window.scrollTo(0, 0);
+  };
+  const ctx: Ctx = {
+    screen,
+    sc,
+    go,
+    back: () => setStack((st) => (st.length > 1 ? st.slice(0, -1) : st)),
+    canBack: stack.length > 1,
+    pickScenario: (id, then) => {
+      setScId(id);
+      setMissingScope(false);
+      if (then) go(then);
+    },
+    guards: guardsBy[scId],
+    setGuard: (k, v) => setGuardsBy({ ...guardsBy, [scId]: { ...guardsBy[scId], [k]: v } }),
+    mode: modeBy[scId],
+    setMode: (m) => setModeBy({ ...modeBy, [scId]: m }),
+    modeOf: (id) => modeBy[id],
+    guardsOf: (id) => guardsBy[id],
+    missingScope,
+    setMissingScope,
+    extra: extraBy[scId],
+    addExtra: (l) => setExtraBy({ ...extraBy, [scId]: [...extraBy[scId], l] }),
+    created,
+    markCreated: () => setCreated(created.includes(scId) ? created : [...created, scId]),
+    change,
+    setChange,
+    fixed,
+    setFixed,
+    raised,
+    setRaised,
+    startChoice,
+    setStartChoice,
+    tour,
+    tips,
+    setTips,
+  };
+
+  const Screen = RENDER[screen];
+  return (
+    <Nav.Provider value={ctx}>
+      <div style={{ width: "100%" }}>
+        <Screen key={`${screen}-${stack.length}-${scId}`} />
+      </div>
+      {welcome && (
+        <Welcome
+          onPick={(id) => {
+            setTour(id);
+            setScId(id);
+            setStartChoice(id === "kit" ? "describe" : "github");
+            if (id === "fin") setModeBy({ ...modeBy, fin: "manual" });
+            setTips(true);
+            setWelcome(false);
+            setStack(["home"]);
+          }}
+          onClose={() => {
+            setTips(false);
+            setWelcome(false);
+          }}
         />
-      </Stack>
-
-      <Stack gap={10}>
-        <H2>Checked against DigitalOcean's public pages</H2>
-        <Text size="small" tone="secondary">Web search on 24 Sep 2026. The biggest finding: the HIPAA path can't use App Platform, Managed Databases or Knowledge Bases.</Text>
-        <Table
-          headers={["Fact", "What it changed", "Source"]}
-          rows={[
-            ["HIPAA-eligible: Droplets, GPU Droplets, Kubernetes, 1-Click Models, Monitoring, Firewalls, Load Balancers, Reserved IPs, VPC, Spaces, Volumes, backups and snapshots, Container Registry, Custom Images. BAA through Sales or Support.", "HIPAA mode swaps to Droplets, a Volume and pgvector. BAA shown as pending.", <Link href="https://www.digitalocean.com/trust/hipaa-at-do">HIPAA at DO</Link>],
-            ["CSPM is under Security. Scans are manual. Basic is $5 per covered workload per month (Droplets, Managed Databases).", "CSPM priced per workload. Scans after deploy and changes are labeled as a proposal.", <Link href="https://docs.digitalocean.com/products/cspm/details/pricing/">CSPM pricing</Link>],
-            ["PCI-DSS SAQ-A covers DigitalOcean's admin environment only.", "Fintech path says keep card data with Stripe; no PCI claim for the customer's app.", <Link href="https://www.digitalocean.com/trust/certification-reports">Certification reports</Link>],
-            ["Guardrails: content moderation and jailbreak $0.20, sensitive data $0.34 per 1M tokens.", "Kit guardrail prices.", <Link href="https://docs.digitalocean.com/products/inference/details/pricing/">Inference pricing</Link>],
-            ["Knowledge bases bill embeddings plus OpenSearch, from $19.60/mo.", "Knowledge base line price.", <Link href="https://www.digitalocean.com/pricing/managed-databases">Managed Databases pricing</Link>],
-            ["App Platform 1 GiB $12, 2 GiB $25. Managed Postgres 1 GiB $15.15. Valkey 1 GiB $15.", "Line prices.", <Link href="https://www.digitalocean.com/pricing/app-platform">App Platform pricing</Link>],
-          ]}
-        />
-      </Stack>
-
-      <Callout tone="neutral" title="Still open">
-        Whether App Platform, Managed Databases and Knowledge Bases should join the HIPAA list, since today HIPAA customers fall back to self-managed Droplets. Hourly CSPM
-        checks need scheduled scans, which CSPM doesn't offer yet. The brief's model update and the weekly numbers are examples.
-      </Callout>
-    </Stack>
+      )}
+    </Nav.Provider>
   );
 }
