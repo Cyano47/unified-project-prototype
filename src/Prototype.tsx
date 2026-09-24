@@ -618,8 +618,10 @@ const MAPS: Record<string, MapDef> = {
       { id: "postgres", x: 444, y: 40 },
       { id: "uploads", x: 444, y: 190 },
       { id: "notes-kb", x: 690, y: 190 },
+      { id: "worker-1", x: 224, y: 215 },
     ],
     edges: [
+      { from: "worker-1", to: "postgres", label: "jobs" },
       { from: "internet", to: "web" },
       { from: "web", to: "postgres", label: "DATABASE_URL" },
       { from: "web", to: "uploads" },
@@ -690,6 +692,79 @@ const MAPS: Record<string, MapDef> = {
     ],
     group: { x: 210, y: 14, w: 640, h: 190 },
   },
+  "fin+change": {
+    w: 860, h: 400,
+    nodes: [
+      { id: "internet", x: 14, y: 115, external: { title: "Internet", kind: "Client's customers", icon: "globe" } },
+      { id: "api-1", x: 224, y: 115 },
+      { id: "ledger-db", x: 444, y: 40 },
+      { id: "jobs-cache", x: 444, y: 190 },
+      { id: "invoices", x: 444, y: 300 },
+      { id: "files", x: 690, y: 40 },
+      { id: "lb-1", x: 690, y: 115 },
+      { id: "api-2", x: 690, y: 190 },
+    ],
+    edges: [
+      { from: "internet", to: "api-1", label: "443" },
+      { from: "api-1", to: "ledger-db", label: "VPC" },
+      { from: "api-1", to: "jobs-cache", label: "REDIS_URL" },
+      { from: "api-1", to: "invoices", label: "SPACES_KEY" },
+    ],
+    group: { x: 210, y: 14, w: 640, h: 372 },
+  },
+  "kit+change": {
+    w: 860, h: 390,
+    nodes: [
+      { id: "users", x: 14, y: 90, external: { title: "Website visitors", kind: "Chat widget", icon: "globe" } },
+      { id: "chatbot", x: 224, y: 90 },
+      { id: "agent", x: 444, y: 90 },
+      { id: "help-kb", x: 690, y: 90 },
+      { id: "tickets-fn", x: 444, y: 215 },
+      { id: "source", x: 690, y: 310, external: { title: "help.acme.io", kind: "Your help center", icon: "doc" } },
+    ],
+    edges: [
+      { from: "users", to: "chatbot" },
+      { from: "chatbot", to: "agent", label: "access key" },
+      { from: "agent", to: "help-kb", label: "retrieve" },
+      { from: "agent", to: "tickets-fn", label: "function route" },
+      { from: "source", to: "help-kb", label: "crawl" },
+    ],
+    group: { x: 210, y: 14, w: 640, h: 278 },
+  },
+  "rag+change": {
+    w: 860, h: 300,
+    nodes: [
+      { id: "team", x: 14, y: 90, external: { title: "Your team", kind: "Agent endpoint", icon: "globe" } },
+      { id: "assistant", x: 224, y: 90 },
+      { id: "docs-kb", x: 444, y: 90 },
+      { id: "docs", x: 690, y: 90 },
+      { id: "slack", x: 14, y: 205, external: { title: "Slack", kind: "Your workspace", icon: "globe" } },
+      { id: "slack-bot", x: 224, y: 205 },
+    ],
+    edges: [
+      { from: "team", to: "assistant", label: "access key" },
+      { from: "assistant", to: "docs-kb", label: "retrieve" },
+      { from: "docs", to: "docs-kb", label: "indexed" },
+      { from: "slack", to: "slack-bot", label: "events" },
+      { from: "slack-bot", to: "assistant", label: "access key" },
+    ],
+    group: { x: 210, y: 14, w: 640, h: 278 },
+  },
+  "webdb+change": {
+    w: 860, h: 300,
+    nodes: [
+      { id: "internet", x: 14, y: 90, external: { title: "Internet", kind: "Shop customers", icon: "globe" } },
+      { id: "web", x: 340, y: 90 },
+      { id: "postgres", x: 630, y: 90 },
+      { id: "photos", x: 630, y: 205 },
+    ],
+    edges: [
+      { from: "internet", to: "web", label: "HTTPS" },
+      { from: "web", to: "postgres", label: "DATABASE_URL" },
+      { from: "web", to: "photos", label: "SPACES_KEY" },
+    ],
+    group: { x: 210, y: 14, w: 640, h: 278 },
+  },
 };
 
 function mapKey(sc: Scenario, g: Guards) {
@@ -704,9 +779,10 @@ type ScreenId =
   | "home" | "start" | "github" | "analysis" | "compliance" | "mode" | "kits" | "ask" | "plan" | "manual" | "empty"
   | "approve" | "deploy" | "project" | "add" | "diff" | "alertEmail" | "brief" | "undo" | "export" | "agent";
 
-type DayN = 0 | 7 | 30;
-const LATER: Partial<Record<ScenarioId, DayN>> = { health: 7, fin: 7, kit: 30 };
-const LATER_LABEL: Partial<Record<ScenarioId, string>> = { health: "Day 7 · a check fails", fin: "Day 7 · first scan findings", kit: "Day 30 · pause point" };
+type DayN = 0 | 7 | 14 | 30;
+const LATER: Record<ScenarioId, DayN> = { health: 7, fin: 7, kit: 30, rag: 14, webdb: 30 };
+const LATER_LABEL: Record<ScenarioId, string> = { health: "Day 7 · a check fails", fin: "Day 7 · first scan findings", kit: "Day 30 · pause point", rag: "Day 14 · private file indexed", webdb: "Day 30 · pages slow down" };
+const FIX_ID: Record<ScenarioId, string> = { health: "health-fw", fin: "fin-ssh", kit: "kit-raise", rag: "rag-hr", webdb: "webdb-index" };
 
 type Mode = "vibe" | "manual";
 type StartChoice = "github" | "describe" | "empty";
@@ -1082,6 +1158,14 @@ function notesFor(ctx: Ctx): Note[] {
     out.push({ title: open ? "support-bot reached its pause point" : `support-bot pause point raised to ${money(ctx.askOf("kit").pause + 15)}`, sub: "Day 30 · usage", tone: open ? "warn" : "ok", sc: "kit", day: 30, to: "project", open });
     out.push({ title: "Month 1 brief · support-bot", sub: "Day 30 · 2 upkeep drafts", tone: "info", sc: "kit", day: 30, to: "brief", open: false });
   }
+  if (ctx.created.includes("rag")) {
+    const open = !r.includes("rag-hr");
+    out.push({ title: open ? "docs-assistant · a private file was indexed" : "docs-assistant · hr/ removed from the index", sub: "Day 14 · guardrails", tone: open ? "warn" : "ok", sc: "rag", day: 14, to: "project", open });
+  }
+  if (ctx.created.includes("webdb")) {
+    const open = !r.includes("webdb-index");
+    out.push({ title: open ? "my-web-app · order pages are slow" : "my-web-app · order pages fast again", sub: "Day 30 · hourly check", tone: open ? "warn" : "ok", sc: "webdb", day: 30, to: "project", open });
+  }
   return out;
 }
 
@@ -1138,6 +1222,7 @@ function ConsoleFrame({ children, active }: { children: ReactNode; active: strin
           <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${DO.blue}`, color: DO.blue, borderRadius: 16, padding: "5px 12px", fontSize: 12.5, fontWeight: 600 }}>
             <Ico name="sparkle" size={13} /> AI Assistant
           </div>
+          {bell && <div onClick={() => setBell(false)} style={{ position: "fixed", inset: 0, zIndex: -1 }} />}
           {bell && (
             <div style={{ position: "absolute", top: 50, right: 150, width: 340, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, boxShadow: "0 8px 24px rgba(3,27,78,0.14)", overflow: "hidden" }}>
               <div style={{ padding: "10px 14px", borderBottom: `1px solid ${DO.border}` }}><T weight={700}>Notifications</T></div>
@@ -1550,6 +1635,57 @@ function EmptyScreen() {
 
 const WORKER: Line = { name: "worker-1", kind: "Droplet · 1 GB", why: "Runs the reminder job each morning. Uses a jobs table in db-1 as the queue.", price: 6, cli: "doctl compute droplet get worker-1" };
 
+type ChangeRow = ["Add" | "Change" | "Not used", string, string];
+type Change = { title: string; ask: string; line: Line; rows: ChangeRow[]; note?: string; done: string };
+
+const FN_USAGE = "90,000 GB-s free, then $0.0000185/GB-s";
+
+function changeFor(sc: Scenario, g: Guards): Change {
+  switch (sc.id) {
+    case "health":
+      return g.hipaa
+        ? {
+            title: "appointment reminders", ask: "Send appointment reminder emails to patients every morning at 7.", line: WORKER, done: "worker-1 is live and sending reminders.",
+            rows: [["Add", "worker-1 · Droplet 1 GB", "+$6/mo"], ["Change", "db-1 · adds a jobs table (pg-boss)", "$0"], ["Change", "web-1 · schedules reminders", "$0"], ["Not used", "Managed Valkey queue · not HIPAA-eligible", "$0"]],
+            note: "A queue would normally use Managed Valkey. HIPAA mode keeps the queue inside db-1 instead.",
+          }
+        : {
+            title: "appointment reminders", ask: "Send appointment reminder emails to patients every morning at 7.", line: { ...WORKER, why: "Runs the reminder job each morning. Uses a jobs table in postgres as the queue." }, done: "worker-1 is live and sending reminders.",
+            rows: [["Add", "worker-1 · Droplet 1 GB", "+$6/mo"], ["Change", "postgres · adds a jobs table (pg-boss)", "$0"], ["Change", "web · schedules reminders", "$0"]],
+          };
+    case "fin":
+      return {
+        title: "invoice archive", ask: "Keep every generated invoice PDF for 7 years.", done: "invoices is live. New PDFs are stored there and kept for 7 years.",
+        line: { name: "invoices", kind: "Spaces bucket (private)", why: "Stores invoice PDFs. A lifecycle rule keeps them 7 years.", price: 5 },
+        rows: [["Add", "invoices · Spaces bucket, 7-year lifecycle rule", "+$5/mo"], ["Change", "api-1 · writes PDFs to invoices after each run", "$0"]],
+      };
+    case "kit":
+      return {
+        title: "open a ticket", ask: "When the chatbot can't answer, open a ticket in our helpdesk.", done: "tickets-fn is live. Unanswered questions now open a ticket.",
+        line: { name: "tickets-fn", kind: "Functions", why: "Called by the agent to open a helpdesk ticket", price: 0, usage: FN_USAGE },
+        rows: [["Add", "tickets-fn · Function", "Usage only"], ["Change", "agent · adds a function route to tickets-fn", "$0"]],
+      };
+    case "rag":
+      return {
+        title: "ask from Slack", ask: "Let the team ask the assistant from Slack.", done: "slack-bot is live. The team can ask from Slack.",
+        line: { name: "slack-bot", kind: "Functions", why: "Receives Slack messages and calls the assistant", price: 0, usage: FN_USAGE },
+        rows: [["Add", "slack-bot · Function", "Usage only"], ["Change", "assistant · new access key for slack-bot", "$0"]],
+      };
+    case "webdb":
+      return {
+        title: "product photos", ask: "Store product photos and serve them fast.", done: "photos is live and served through the CDN.",
+        line: { name: "photos", kind: "Spaces bucket + CDN", why: "Product photos served through the built-in CDN", price: 5 },
+        rows: [["Add", "photos · Spaces bucket with CDN", "+$5/mo"], ["Change", "web · uploads photos to the bucket", "$0"]],
+      };
+  }
+}
+
+function mapFor(sc: Scenario, g: Guards, lines: Line[]): MapDef {
+  const key = mapKey(sc, g);
+  const withChange = lines.some((l) => l.name === changeFor(sc, g).line.name);
+  return (withChange && MAPS[`${key}+change`]) || MAPS[key];
+}
+
 function planMeter(sc: Scenario, g: Guards, spent: number, warn?: boolean, pauseOverride?: number) {
   const u = usageFor(sc, g);
   const at = pauseOverride ?? u.pauseAt;
@@ -1693,13 +1829,14 @@ function ApproveScreen() {
   const g = ctx.guards;
   const scopes = g.hipaa && sc.hipaaScopes ? sc.hipaaScopes : sc.scopes;
   const isChange = ctx.change;
-  const extra = isChange ? [...ctx.extra.filter((e) => e.name !== WORKER.name), WORKER] : ctx.extra;
+  const ch = changeFor(sc, g);
+  const extra = isChange ? [...ctx.extra.filter((e) => e.name !== ch.line.name), ch.line] : ctx.extra;
   const lines = [...linesFor(sc, g), ...extra];
   const u = usageFor(sc, g, ctx.ask.pause);
   const vibe = ctx.mode === "vibe";
   const approve = () => {
     if (isChange) {
-      if (!ctx.extra.some((e) => e.name === WORKER.name)) ctx.addExtra(WORKER);
+      if (!ctx.extra.some((e) => e.name === ch.line.name)) ctx.addExtra(ch.line);
       ctx.setChange(false);
       ctx.go("project");
     } else {
@@ -1716,7 +1853,7 @@ function ApproveScreen() {
         <div style={{ flex: 1, minWidth: 420, display: "flex", flexDirection: "column", gap: 14 }}>
           <Card>
             <SectionLabel>This will</SectionLabel>
-            <KV k="Create" v={isChange ? "1 Droplet (worker-1) and change 2 existing resources" : `${lines.length} resources: ${lines.map((l) => l.name).join(", ")}`} />
+            <KV k="Create" v={isChange ? `1 new part (${ch.line.name}) and change ${ch.rows.filter((x) => x[0] === "Change").length} existing`  : `${lines.length} resources: ${lines.map((l) => l.name).join(", ")}`} />
             <KV k="Monthly cost" v={`${money(fixedTotal(sc, g, extra))}/mo${u.pauseAt ? " + usage" : ""}`} />
             {u.pauseAt > 0 && <KV k="Pause point" v={money(u.pauseAt)} />}
             {vibe && <KV k="Checks" v="Hourly, starting right after deploy" />}
@@ -1860,8 +1997,7 @@ function ViewToggle({ view, setView }: { view: "map" | "list"; setView: (v: "map
 function DaySwitch() {
   const ctx = useNav();
   const later = LATER[ctx.sc.id];
-  if (!later) return null;
-  const items: [DayN, string][] = [[0, "Day 0 · deployed"], [later, LATER_LABEL[ctx.sc.id] ?? ""]];
+  const items: [DayN, string][] = [[0, "Day 0 · deployed"], [later, LATER_LABEL[ctx.sc.id]]];
   const seg = (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
       <T size={12} weight={600} color={DO.text3} style={{ textTransform: "uppercase", letterSpacing: 0.4 }}>Timeline</T>
@@ -1872,7 +2008,7 @@ function DaySwitch() {
       </div>
     </div>
   );
-  const done = ctx.resolved.includes(({ health: "health-fw", fin: "fin-ssh", kit: "kit-raise" } as Partial<Record<ScenarioId, string>>)[ctx.sc.id] ?? "");
+  const done = ctx.resolved.includes(FIX_ID[ctx.sc.id]);
   return ctx.day === 0 && !done ? <Tip text={`Jump to Day ${later} to see what the owner of ${ctx.sc.project} sees later.`}>{seg}</Tip> : seg;
 }
 
@@ -1900,9 +2036,10 @@ function ProjectScreen() {
   const u = usageFor(sc, g, ctx.ask.pause);
   const monthly = fixedTotal(sc, g, ctx.extra);
   const day = ctx.day;
-  const hasWorker = ctx.extra.some((e) => e.name === WORKER.name);
-  const canChange = day === 0 && sc.id === "health" && g.hipaa && !hasWorker && r.includes("health-fw");
-  const addBtn = <Btn icon="plus" variant={canChange ? "primary" : "secondary"} onClick={() => (sc.id === "health" && g.hipaa ? (ctx.setChange(true), ctx.go("add")) : ctx.go("start"))}>Add to this project</Btn>;
+  const ch = changeFor(sc, g);
+  const hasChange = ctx.extra.some((e) => e.name === ch.line.name);
+  const canChange = day === 0 && sc.id === "health" && g.hipaa && !hasChange && r.includes("health-fw");
+  const addBtn = <Btn icon="plus" variant={canChange ? "primary" : "secondary"} onClick={() => { ctx.setChange(true); ctx.go("add"); }}>Add to this project</Btn>;
 
   let banner: ReactNode = null;
   let stats: [string, string, string?][] = [];
@@ -1917,7 +2054,7 @@ function ProjectScreen() {
     ) : (
       <Banner tone="ok" title="Day 0 · live">The first CSPM scan passed with 0 critical findings. In Manual mode there are no hourly checks; changes and scans are up to you.</Banner>
     );
-    if (hasWorker && sc.id === "health") banner = <Banner tone="ok" title="Change applied">worker-1 is live and sending reminders. Undo is available for 72 hours in Activity.</Banner>;
+    if (hasChange) banner = <Banner tone="ok" title={`Change applied · ${ch.title}`}>{`${ch.done} Undo is available for 72 hours in Activity.`}</Banner>;
     stats = [["Monthly estimate", `${money(monthly)}${u.pauseAt ? " + usage" : ""}`], [vibe ? "Checks" : "Protections", vibe ? "1 of 1 passed" : `${sc.guards.filter((x) => g[x.id]).length} on`], [vibe ? "First brief" : "Last CSPM scan", vibe ? "Monday" : "0 critical"]];
     below = g.hipaa ? (
       <Card>
@@ -2043,6 +2180,85 @@ function ProjectScreen() {
     );
   }
 
+  if (day !== 0 && sc.id === "rag") {
+    const open = !r.includes("rag-hr");
+    const spent = 2.1;
+    banner = open ? (
+      <Banner tone="warn" title="Day 14 · a private file was indexed">On Day 12 someone uploaded hr/staff-contacts.xlsx to the docs bucket, and docs-kb indexed it. Sensitive data detection redacted phone numbers and home addresses from 9 answers, so nothing leaked, but the file shouldn't be searchable.</Banner>
+    ) : (
+      <Banner tone="ok" title="Day 14 · hr/ removed from the index">docs-kb no longer indexes the hr/ folder. The file is still in the bucket. Undo is in Activity for 72 hours.</Banner>
+    );
+    overrides = open ? { docs: ["warn", "hr/ folder added"], "docs-kb": ["warn", "Indexed hr/ files"] } : undefined;
+    groupRight = open ? "needs review" : "verified · checked hourly";
+    meter = planMeter(sc, g, spent, false, u.pauseAt);
+    stats = [["Usage so far", `${money(spent)} of ${money(u.pauseAt)} pause point`], ["Answers redacted", open ? "9 this week" : "9, source removed", open ? DO.amber : DO.green], ["Checks", "336 of 336 passed", DO.green]];
+    below = (
+      <>
+        {open && (
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><SectionLabel>Proposed fix</SectionLabel><Badge tone="draft">Draft</Badge></div>
+            <DTable headers={["Step", "Part", "Cost"]} rows={[["Exclude the hr/ folder from docs-kb", "docs-kb data source", "$0"], ["Re-index docs-kb without hr/", "docs-kb", "About $0.01 once"], ["Ask the 9 redacted questions again to confirm", "assistant", "Under $0.01"]]} />
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Tip text="Apply the fix. docs and docs-kb turn green, and the change lands in Activity with an undo.">
+                <Btn onClick={() => ctx.resolve("rag-hr")}>Apply fix</Btn>
+              </Tip>
+              <Btn variant="secondary">Keep it searchable</Btn>
+            </div>
+          </Card>
+        )}
+        <Card>
+          <SectionLabel>Week 2 brief</SectionLabel>
+          <KV k="Answers" v="1,204 questions answered. Most-used sources: meetings/ and proposals/." />
+          <KV k="Usage" v={`${money(spent)} so far, on track for about ${money(u.estimate)} this month.`} />
+          <DTable
+            headers={["Upkeep draft", "Cost", ""]}
+            rows={[["38 new meeting notes were added this week. Re-index docs-kb so they're searchable.", "About $0.01 once", r.includes("rag-reindex") ? <Badge tone="ok">Done</Badge> : <Btn variant="secondary" onClick={() => ctx.resolve("rag-reindex")}>Approve</Btn>]]}
+          />
+        </Card>
+      </>
+    );
+  }
+
+  if (day !== 0 && sc.id === "webdb") {
+    const slow = !r.includes("webdb-index");
+    banner = slow ? (
+      <Banner tone="warn" title="Day 30 · order pages are slow">Orders grew to 48,000 rows. /orders now takes 1.9 s at p95, up from 180 ms on Day 0, because Postgres scans the whole orders table to sort by date.</Banner>
+    ) : (
+      <Banner tone="ok" title="Day 30 · order pages fast again">The new index is in place. /orders is back to 160 ms at p95. Undo is in Activity for 72 hours.</Banner>
+    );
+    overrides = slow ? { web: ["warn", "p95 1.9 s on /orders"], postgres: ["warn", "Full table scans"] } : undefined;
+    groupRight = slow ? "slow pages" : "verified · checked hourly";
+    stats = [["This month", `${money(monthly)} of ${money(monthly)} estimate`, DO.green], ["/orders p95", slow ? "1.9 s" : "160 ms", slow ? DO.amber : DO.green], ["Checks this month", slow ? "706 of 720 passed" : "720 of 720 passed", slow ? DO.amber : DO.green]];
+    below = (
+      <>
+        {slow && (
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><SectionLabel>Proposed fix</SectionLabel><Badge tone="draft">Draft</Badge></div>
+            <DTable headers={["Step", "Part", "Cost"]} rows={[["Add an index on orders(created_at), built without locking the table", "postgres", "$0"], ["Load /orders 20 times and compare p95", "web", "$0"]]} />
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Tip text="Apply the fix. The map turns green and the index can be dropped from Activity if needed.">
+                <Btn onClick={() => ctx.resolve("webdb-index")}>Apply fix</Btn>
+              </Tip>
+              <Btn variant="secondary">Show the slow query</Btn>
+            </div>
+          </Card>
+        )}
+        <Card>
+          <SectionLabel>Month 1 brief</SectionLabel>
+          <KV k="Cost" v={`${money(monthly)}, exactly the estimate. Nothing here is usage-billed.`} />
+          <KV k="Backups" v="Daily backups ran every night. Point-in-time recovery covers the last 7 days." />
+          <DTable
+            headers={["Upkeep draft", "Cost", ""]}
+            rows={[
+              ["Email me if this month's bill passes $35.", "$0", r.includes("webdb-alert") ? <Badge tone="ok">On</Badge> : <Btn variant="secondary" onClick={() => ctx.resolve("webdb-alert")}>Approve</Btn>],
+              ["Apply the Postgres 16 minor update in Sunday's maintenance window.", "$0", r.includes("webdb-minor") ? <Badge tone="ok">Scheduled</Badge> : <Btn variant="secondary" onClick={() => ctx.resolve("webdb-minor")}>Approve</Btn>],
+            ]}
+          />
+        </Card>
+      </>
+    );
+  }
+
   return (
     <ProjectShell tab="Resources" right={canChange ? <Tip text="Add a feature to a live project. The same flow returns a change plan on top of what exists." place="left">{addBtn}</Tip> : addBtn}>
       <DaySwitch />
@@ -2050,7 +2266,7 @@ function ProjectScreen() {
       <Stat3 items={stats} />
       <ViewToggle view={view} setView={setView} />
       {view === "map" ? (
-        <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={lines} mode="live" overrides={overrides} groupLabel={`${vibe ? "Plan" : "Resources"} · ${sc.project}`} groupRight={groupRight} meter={meter} />
+        <MapWithDrawer map={mapFor(sc, g, lines)} lines={lines} mode="live" overrides={overrides} groupLabel={`${vibe ? "Plan" : "Resources"} · ${sc.project}`} groupRight={groupRight} meter={meter} />
       ) : (
         <ResourceList sc={sc} lines={lines} vibe={vibe} tones={overrides} />
       )}
@@ -2065,27 +2281,31 @@ function ProjectScreen() {
 
 function AddScreen() {
   const ctx = useNav();
-  const [change, setChangeText] = useState("Send appointment reminder emails to patients every morning at 7.");
   const sc = ctx.sc;
-  const lines = linesFor(sc, ctx.guards);
+  const g = ctx.guards;
+  const ch = changeFor(sc, g);
+  const [change, setChangeText] = useState(ch.ask);
+  const lines = [...linesFor(sc, g), ...ctx.extra];
+  const added = ctx.extra.some((e) => e.name === ch.line.name);
   return (
     <ProjectShell tab="Resources">
       <BackLink />
       <Centered width={720}>
         <Card>
           <T size={18} weight={700} color={DO.navy}>Add to this project</T>
-          <T size={12.5} color={DO.text2}>Same flow as a new project. What's already here is used as context, and HIPAA mode stays on.</T>
-          <Field label="What should change?"><TextBox value={change} onChange={setChangeText} /></Field>
+          <T size={12.5} color={DO.text2}>{`Same flow as a new project. What's already here is used as context${g.hipaa ? ", and HIPAA mode stays on" : ""}.`}</T>
+          <Field label="What should change?"><TextBox value={change} onChange={setChangeText} placeholder={ch.ask} /></Field>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <T size={12} color={DO.text3}>Context:</T>
             {lines.map((l) => <Chip key={l.name}>{l.name}</Chip>)}
-            <Chip>HIPAA mode on</Chip>
+            {g.hipaa && <Chip>HIPAA mode on</Chip>}
           </div>
+          {added && <Banner tone="info" title={`${ch.line.name} is already in this project`}>Approving again updates it in place. Nothing is duplicated.</Banner>}
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <Tip text="The plan comes back as a change: new parts dashed, existing parts kept.">
-              <Btn onClick={() => ctx.go("diff")}>Build change plan</Btn>
+              <Btn disabled={!change.trim()} onClick={() => ctx.go("diff")}>Build change plan</Btn>
             </Tip>
-            <Btn variant="secondary" onClick={() => ctx.go("kits")}>Browse starter kits</Btn>
+            <Btn variant="secondary" onClick={() => { ctx.setChange(false); ctx.back(); }}>Cancel</Btn>
           </div>
         </Card>
       </Centered>
@@ -2097,26 +2317,22 @@ function DiffScreen() {
   const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
-  const lines = [...linesFor(sc, g), WORKER];
+  const ch = changeFor(sc, g);
+  const extra = [...ctx.extra.filter((e) => e.name !== ch.line.name), ch.line];
+  const lines = [...linesFor(sc, g), ...extra];
+  const changed = ch.rows.filter((x) => x[0] === "Change").length;
+  const badge = { Add: "info", Change: "neutral", "Not used": "warn" } as const;
   return (
     <ProjectShell tab="Resources" right={<Badge tone="draft">Change draft</Badge>}>
       <BackLink />
-      <T size={16} weight={700}>Change plan: appointment reminders</T>
-      <MapWithDrawer map={MAPS["health-hipaa"]} lines={lines} mode="live" draftIds={["worker-1"]} groupLabel={`Plan · ${sc.project}`} groupRight="1 new part · 2 changed" />
+      <T size={16} weight={700}>{`Change plan: ${ch.title}`}</T>
+      <MapWithDrawer map={mapFor(sc, g, lines)} lines={lines} mode="live" draftIds={[ch.line.name]} groupLabel={`Plan · ${sc.project}`} groupRight={`1 new part · ${changed} changed`} />
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 420, display: "flex", flexDirection: "column", gap: 10 }}>
-          <DTable
-            headers={["Change", "Part", "Cost"]}
-            rows={[
-              [<Badge tone="info">Add</Badge>, "worker-1 · Droplet 1 GB", "+$6/mo"],
-              [<Badge tone="neutral">Change</Badge>, "db-1 · adds a jobs table (pg-boss)", "$0"],
-              [<Badge tone="neutral">Change</Badge>, "web-1 · schedules reminders", "$0"],
-              [<Badge tone="warn">Not used</Badge>, "Managed Valkey queue · not HIPAA-eligible", "$0"],
-            ]}
-          />
-          <T size={12} color={DO.text3}>A queue would normally use Managed Valkey. HIPAA mode keeps the queue inside db-1 instead.</T>
+          <DTable headers={["Change", "Part", "Cost"]} rows={ch.rows.map(([k, part, cost]) => [<Badge tone={badge[k]}>{k}</Badge>, part, cost])} />
+          {ch.note && <T size={12} color={DO.text3}>{ch.note}</T>}
         </div>
-        <Summary sc={sc} guards={g} extra={[...ctx.extra, WORKER]} cta="Continue to approval" onCta={() => ctx.go("approve")} />
+        <Summary sc={sc} guards={g} extra={extra} cta="Continue to approval" onCta={() => ctx.go("approve")} />
       </div>
     </ProjectShell>
   );
@@ -2192,7 +2408,21 @@ function UndoScreen() {
   if (sc.id === "fin") {
     if (r.includes("fin-valkey")) rows.push(["Day 7", "jobs-cache now trusts api-1 only", sc.owner, true]);
     if (r.includes("fin-ssh")) rows.push(["Day 7", "SSH on api-1 limited to office IP (Quick Fix)", sc.owner, true]);
-    ctx.extra.forEach((e) => rows.push(["Day 0", `Added ${e.name}`, sc.owner, false]));
+    ctx.extra.filter((e) => e.name !== changeFor(sc, ctx.guards).line.name).forEach((e) => rows.push(["Day 0", `Added ${e.name}`, sc.owner, false]));
+  }
+  if (sc.id === "rag") {
+    if (r.includes("rag-reindex")) rows.push(["Day 14", "Re-indexed docs-kb with 38 new meeting notes", "plan (approved by you)", true]);
+    if (r.includes("rag-hr")) rows.push(["Day 14", "Excluded hr/ from docs-kb and re-indexed", "plan (approved by you)", true]);
+    rows.push(["Day 12", "Uploaded hr/staff-contacts.xlsx to docs", "jo@finch.studio", false]);
+  }
+  if (sc.id === "webdb") {
+    if (r.includes("webdb-minor")) rows.push(["Day 30", "Scheduled Postgres minor update for Sunday", "plan (approved by you)", true]);
+    if (r.includes("webdb-alert")) rows.push(["Day 30", "Billing alert at $35", "plan (approved by you)", true]);
+    if (r.includes("webdb-index")) rows.push(["Day 30", "Added index on orders(created_at)", "plan (approved by you)", true]);
+  }
+  if (sc.id !== "health") {
+    const ch = changeFor(sc, ctx.guards);
+    if (ctx.extra.some((e) => e.name === ch.line.name)) rows.unshift(["Today", `Added ${ch.line.name} for ${ch.title}`, "plan (approved by you)", true]);
   }
   rows.push(["Day 0", `Created ${sc.project}`, sc.owner, false]);
   const vibe = ctx.mode === "vibe";
