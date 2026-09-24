@@ -179,25 +179,50 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function Input({ value, mono }: { value: string; mono?: boolean }) {
+const fieldStyle: CSSProperties = {
+  width: "100%", boxSizing: "border-box", border: `1px solid ${DO.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 13, color: DO.text,
+  background: DO.white, fontFamily: DO.font, outline: "none",
+};
+
+function Input({ value, onChange, placeholder, mono }: { value: string; onChange?: (v: string) => void; placeholder?: string; mono?: boolean }) {
   return (
-    <div style={{ border: `1px solid ${DO.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 13, color: DO.text, background: DO.white, fontFamily: mono ? "monospace" : DO.font, minHeight: 18 }}>
-      {value}
+    <input
+      className="do-field"
+      value={value}
+      placeholder={placeholder}
+      readOnly={!onChange}
+      onChange={(e) => onChange?.(e.target.value)}
+      style={{ ...fieldStyle, fontFamily: mono ? "monospace" : DO.font, background: onChange ? DO.white : DO.page }}
+    />
+  );
+}
+
+function SelectBox({ value, options, onChange }: { value: string; options?: string[]; onChange?: (v: string) => void }) {
+  const opts = options ?? [value];
+  return (
+    <div style={{ position: "relative" }}>
+      <select className="do-field" value={value} onChange={(e) => onChange?.(e.target.value)} style={{ ...fieldStyle, appearance: "none", WebkitAppearance: "none", paddingRight: 30, cursor: "pointer" }}>
+        {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex" }}>
+        <Ico name="chevron" size={14} color={DO.text2} />
+      </div>
     </div>
   );
 }
 
-function SelectBox({ value }: { value: string }) {
+function TextBox({ value, onChange, placeholder, rows = 3 }: { value: string; onChange?: (v: string) => void; placeholder?: string; rows?: number }) {
   return (
-    <div style={{ border: `1px solid ${DO.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 13, color: DO.text, background: DO.white, display: "flex", alignItems: "center" }}>
-      <span style={{ flex: 1 }}>{value}</span>
-      <Ico name="chevron" size={14} color={DO.text2} />
-    </div>
+    <textarea
+      className="do-field"
+      value={value}
+      rows={rows}
+      placeholder={placeholder}
+      readOnly={!onChange}
+      onChange={(e) => onChange?.(e.target.value)}
+      style={{ ...fieldStyle, padding: "10px 12px", lineHeight: 1.5, resize: "vertical" }}
+    />
   );
-}
-
-function TextBox({ value }: { value: string }) {
-  return <div style={{ border: `1px solid ${DO.border}`, borderRadius: 6, padding: "10px 12px", fontSize: 13, color: DO.text, background: DO.white, minHeight: 44, lineHeight: 1.5 }}>{value}</div>;
 }
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -320,7 +345,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 /* Scenarios                                                           */
 /* ------------------------------------------------------------------ */
 
-type ScenarioId = "health" | "fin" | "kit";
+type ScenarioId = "health" | "fin" | "kit" | "rag" | "webdb";
 type Line = { name: string; kind: string; why: string; price: number; usage?: string; cli?: string };
 type Guard = { id: string; name: string; what: string; price: number; priceText: string; defaultOn: boolean };
 
@@ -426,7 +451,7 @@ const SCENARIOS: Record<ScenarioId, Scenario> = {
       { name: "ledger-db", kind: "Managed Postgres 16 · 1 GB", why: "You picked it", price: 15.15, cli: "doctl databases get ledger-db" },
       { name: "jobs-cache", kind: "Managed Valkey · 1 GB", why: "You picked it", price: 15 },
     ],
-    ask: "",
+    ask: "Deploy ledger-app from GitHub for our client's invoicing. Card data stays with Stripe. Keep it under $70 a month.",
     pauseAt: 0,
     usageEstimate: 0,
     scopes: ["droplet:create", "database:create", "firewall:create", "vpc:create"],
@@ -461,6 +486,59 @@ const SCENARIOS: Record<ScenarioId, Scenario> = {
     scopes: ["app:create", "genai:create"],
     proof: { q: "How do I reset my password?", a: "Go to Settings, then Security, and choose Reset password. You will get an email within a minute. Source: help.acme.io/account/reset" },
   },
+  rag: {
+    id: "rag",
+    project: "docs-assistant",
+    owner: "leo@finch.studio",
+    context: "A small studio wants its team to search and chat over internal PDFs and meeting notes. No repo yet.",
+    found: [
+      ["Documents", "From your description", "Spaces bucket"],
+      ["Search over documents", "From your description", "Knowledge base"],
+      ["Chat", "From your description", "Agent Platform"],
+    ],
+    env: "Production",
+    purpose: "Internal knowledge assistant",
+    guards: [
+      { id: "sdd", name: "Sensitive data detection", what: "Stops emails, phone numbers and card numbers in your documents from appearing in answers.", price: 0, priceText: "$0.34/1M tokens", defaultOn: true },
+      { id: "jb", name: "Jailbreak detection", what: "Blocks prompts that try to override your instructions.", price: 0, priceText: "$0.20/1M tokens", defaultOn: true },
+    ],
+    lines: [
+      { name: "docs", kind: "Spaces bucket (private)", why: "Holds the PDFs and notes you upload", price: 5 },
+      { name: "docs-kb", kind: "Knowledge base + OpenSearch 2 GB", why: "Indexes everything in the docs bucket", price: 19.6, usage: "embeddings $0.04/1M tokens" },
+      { name: "assistant", kind: "Agent Platform", why: "Answers from docs-kb; default model nemotron-3-super-120b", price: 0, usage: "$0.30/1M tokens" },
+    ],
+    ask: "A private assistant that answers from our PDFs and meeting notes. Team access only. Keep usage under $20 a month.",
+    pauseAt: 20,
+    usageEstimate: 4,
+    scopes: ["spaces:create", "genai:create"],
+    proof: { q: "What did we agree with the client on the March kickoff?", a: "Two design rounds, then a fixed-price build. Launch by June 12. Source: docs/meetings/2026-03-04-kickoff.pdf" },
+  },
+  webdb: {
+    id: "webdb",
+    project: "my-web-app",
+    owner: "ana@corner.shop",
+    context: "A shop owner wants a simple web app with a database, starting from the kit instead of a repo.",
+    found: [
+      ["Web app", "From the starter kit", "App Platform web service"],
+      ["Database", "From the starter kit", "Managed Postgres"],
+    ],
+    env: "Production",
+    purpose: "Web app with database",
+    guards: [
+      { id: "trusted", name: "Database trusted sources", what: "Postgres accepts connections from the web app only, not the internet.", price: 0, priceText: "$0", defaultOn: true },
+      { id: "https", name: "HTTPS certificate", what: "App Platform issues and renews the certificate for your domain.", price: 0, priceText: "$0", defaultOn: true },
+      { id: "pitr", name: "Daily backups and point-in-time recovery", what: "Included with Managed Postgres, kept 7 days.", price: 0, priceText: "Included", defaultOn: true },
+    ],
+    lines: [
+      { name: "web", kind: "App Platform · 1 GB", why: "Runs the starter web app", price: 12, cli: "doctl apps get my-web-app" },
+      { name: "postgres", kind: "Managed Postgres 16 · 1 GB", why: "Stores the app's data", price: 15.15, cli: "doctl databases get my-web-app-db" },
+    ],
+    ask: "A web app with a Postgres database for our shop's orders. Keep it under $30 a month.",
+    pauseAt: 0,
+    usageEstimate: 0,
+    scopes: ["app:create", "database:create"],
+    proof: { q: "GET /health and one test order", a: "my-web-app-3fq9.ondigitalocean.app returned 200. Migrations applied (4 tables). A test order was written and read back." },
+  },
 };
 
 type Guards = Record<string, boolean>;
@@ -469,9 +547,28 @@ function linesFor(sc: Scenario, g: Guards): Line[] {
   return g.hipaa && sc.hipaaLines ? sc.hipaaLines : sc.lines;
 }
 
-function usageFor(sc: Scenario, g: Guards) {
+function usageFor(sc: Scenario, g: Guards, pause?: number) {
   const has = linesFor(sc, g).some((l) => l.usage);
-  return { pauseAt: has ? sc.pauseAt : 0, estimate: has ? sc.usageEstimate : 0 };
+  return { pauseAt: has ? pause ?? sc.pauseAt : 0, estimate: has ? sc.usageEstimate : 0 };
+}
+
+type AskState = { text: string; region: string; size: string; model: string; pause: number };
+
+const REGIONS = ["New York · NYC3", "San Francisco · SFO3", "Toronto · TOR1", "Amsterdam · AMS3", "Frankfurt · FRA1", "London · LON1", "Bangalore · BLR1", "Singapore · SGP1", "Sydney · SYD1"];
+const SIZES = ["Smallest that passes checks", "Balanced", "Room to grow (about 2x)"];
+const MODELS = ["nemotron-3-super-120b", "llama-3.3-70b-instruct", "gpt-oss-120b", "Claude (with your Anthropic API key)"];
+const PAUSES = [10, 20, 30, 45, 60, 100];
+
+function defaultAsk(sc: Scenario): AskState {
+  return { text: sc.ask, region: REGIONS[0], size: SIZES[0], model: MODELS[0], pause: sc.pauseAt || 30 };
+}
+
+function hasAgent(sc: Scenario) {
+  return sc.lines.some((l) => l.kind === "Agent Platform");
+}
+
+function uniq(xs: string[]) {
+  return Array.from(new Set(xs));
 }
 
 function money(n: number) {
@@ -565,6 +662,34 @@ const MAPS: Record<string, MapDef> = {
     ],
     group: { x: 210, y: 14, w: 640, h: 180 },
   },
+  rag: {
+    w: 860, h: 220,
+    nodes: [
+      { id: "team", x: 14, y: 90, external: { title: "Your team", kind: "Agent endpoint", icon: "globe" } },
+      { id: "assistant", x: 224, y: 90 },
+      { id: "docs-kb", x: 444, y: 90 },
+      { id: "docs", x: 690, y: 90 },
+    ],
+    edges: [
+      { from: "team", to: "assistant", label: "access key" },
+      { from: "assistant", to: "docs-kb", label: "retrieve" },
+      { from: "docs", to: "docs-kb", label: "indexed" },
+    ],
+    group: { x: 210, y: 14, w: 640, h: 190 },
+  },
+  webdb: {
+    w: 860, h: 220,
+    nodes: [
+      { id: "internet", x: 14, y: 90, external: { title: "Internet", kind: "Shop customers", icon: "globe" } },
+      { id: "web", x: 340, y: 90 },
+      { id: "postgres", x: 630, y: 90 },
+    ],
+    edges: [
+      { from: "internet", to: "web", label: "HTTPS" },
+      { from: "web", to: "postgres", label: "DATABASE_URL" },
+    ],
+    group: { x: 210, y: 14, w: 640, h: 190 },
+  },
 };
 
 function mapKey(sc: Scenario, g: Guards) {
@@ -580,8 +705,8 @@ type ScreenId =
   | "approve" | "deploy" | "project" | "add" | "diff" | "alertEmail" | "brief" | "undo" | "export" | "agent";
 
 type DayN = 0 | 7 | 30;
-const LATER: Record<ScenarioId, DayN> = { health: 7, fin: 7, kit: 30 };
-const LATER_LABEL: Record<ScenarioId, string> = { health: "Day 7 · a check fails", fin: "Day 7 · first scan findings", kit: "Day 30 · pause point" };
+const LATER: Partial<Record<ScenarioId, DayN>> = { health: 7, fin: 7, kit: 30 };
+const LATER_LABEL: Partial<Record<ScenarioId, string>> = { health: "Day 7 · a check fails", fin: "Day 7 · first scan findings", kit: "Day 30 · pause point" };
 
 type Mode = "vibe" | "manual";
 type StartChoice = "github" | "describe" | "empty";
@@ -607,6 +732,9 @@ type Ctx = {
   markCreated: () => void;
   change: boolean;
   setChange: (v: boolean) => void;
+  ask: AskState;
+  askOf: (id: ScenarioId) => AskState;
+  setAsk: (p: Partial<AskState>, id?: ScenarioId) => void;
   day: DayN;
   setDay: (d: DayN, id?: ScenarioId) => void;
   resolved: string[];
@@ -862,7 +990,8 @@ function MapWithDrawer(props: {
 function Summary({ sc, guards, cta, onCta, extra, disabled }: { sc: Scenario; guards: Guards; cta?: string; onCta?: () => void; extra?: Line[]; disabled?: boolean }) {
   const lines = [...linesFor(sc, guards), ...(extra ?? [])];
   const onGuards = sc.guards.filter((x) => guards[x.id]);
-  const u = usageFor(sc, guards);
+  const { ask } = useNav();
+  const u = usageFor(sc, guards, ask.pause);
   const total = fixedTotal(sc, guards, extra);
   return (
     <div style={{ width: 260, flexShrink: 0, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, alignSelf: "flex-start", overflow: "hidden" }}>
@@ -950,7 +1079,7 @@ function notesFor(ctx: Ctx): Note[] {
   }
   if (ctx.created.includes("kit")) {
     const open = !r.includes("kit-raise");
-    out.push({ title: open ? "support-bot reached its pause point" : "support-bot pause point raised to $45", sub: "Day 30 · usage", tone: open ? "warn" : "ok", sc: "kit", day: 30, to: "project", open });
+    out.push({ title: open ? "support-bot reached its pause point" : `support-bot pause point raised to ${money(ctx.askOf("kit").pause + 15)}`, sub: "Day 30 · usage", tone: open ? "warn" : "ok", sc: "kit", day: 30, to: "project", open });
     out.push({ title: "Month 1 brief · support-bot", sub: "Day 30 · 2 upkeep drafts", tone: "info", sc: "kit", day: 30, to: "brief", open: false });
   }
   return out;
@@ -1141,8 +1270,8 @@ function HomeScreen() {
       />
       <SectionLabel>Start from an example</SectionLabel>
       <div style={{ display: "flex", gap: 12 }}>
-        {([["agent", "Customer support chatbot", true], ["kb", "RAG knowledge assistant", false], ["app", "Web app with database", false]] as [IconName, string, boolean][]).map(([ic, t, live]) => (
-          <div key={t} onClick={live ? () => ctx.pickScenario("kit", "analysis") : () => ctx.go("kits")} style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: 14, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, cursor: "pointer" }}>
+        {([["agent", "Customer support chatbot", "kit"], ["kb", "RAG knowledge assistant", "rag"], ["app", "Web app with database", "webdb"]] as [IconName, string, ScenarioId][]).map(([ic, t, id]) => (
+          <div key={t} className="do-kit" onClick={() => ctx.pickScenario(id, "analysis")} style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: 14, background: DO.white, border: `1px solid ${DO.border}`, borderRadius: 8, cursor: "pointer" }}>
             <IconTile name={ic} />
             <T weight={600} size={12.5} style={{ flex: 1 }}>{t}</T>
             <Ico name="arrow" size={14} color={DO.blue} />
@@ -1164,7 +1293,9 @@ function HomeScreen() {
 function StartScreen() {
   const ctx = useNav();
   const st = ctx.startChoice;
-  const name = st === "github" ? "Named after the repo you pick" : st === "describe" ? "support-bot" : "my-project";
+  const [typed, setTyped] = useState<Record<string, string>>({});
+  const fallback = st === "github" ? "" : st === "describe" ? "support-bot" : "my-project";
+  const name = typed[st] ?? fallback;
   const next = () => (st === "github" ? ctx.go("github") : st === "describe" ? ctx.go("kits") : ctx.go("empty"));
   return (
     <ConsoleFrame active="New project">
@@ -1173,7 +1304,7 @@ function StartScreen() {
       <Centered>
         <T size={24} weight={700} color={DO.navy} style={{ textAlign: "center" }}>Create new project</T>
         <Card>
-          <Field label="Project name"><Input value={name} /></Field>
+          <Field label="Project name"><Input value={name} onChange={(v) => setTyped({ ...typed, [st]: v })} placeholder={st === "github" ? "Named after the repo you pick" : "my-project"} /></Field>
           <SectionLabel>How do you want to start?</SectionLabel>
           <Tip text="Pick how to start. A repo gives the best plan; a description or starter kit works without one." place="right" block>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1245,6 +1376,10 @@ function GithubScreen() {
 function AnalysisScreen() {
   const ctx = useNav();
   const sc = ctx.sc;
+  const [env, setEnv] = useState(sc.env);
+  const [purpose, setPurpose] = useState(sc.purpose);
+  const envs = uniq([sc.env, "Production", "Staging", "Development"]);
+  const purposes = uniq([sc.purpose, "Internal tool", "Public website", "API backend", "AI assistant", "Other"]);
   return (
     <ConsoleFrame active="New project">
       <BackLink />
@@ -1252,12 +1387,12 @@ function AnalysisScreen() {
       <PageHeader crumb={`New project · ${sc.project}`} title={sc.repo ? `What we found in ${sc.repo}` : "What we understood"} sub={sc.repo ? "Every part below has evidence from the repo. Change anything that's wrong." : "From the starter kit description. Change anything that's wrong."} />
       <DTable headers={["Part", "Evidence", "Suggested product"]} rows={sc.found.map((f) => [<T weight={600}>{f[0]}</T>, <T size={12} color={DO.text2} style={{ fontFamily: "monospace" }}>{f[1]}</T>, f[2]])} tones={sc.found.map(() => "ok")} />
       <div style={{ display: "flex", gap: 16 }}>
-        <div style={{ flex: 1 }}><Field label="Environment" hint="Inferred. Change it if it's wrong."><SelectBox value={sc.env} /></Field></div>
-        <div style={{ flex: 1 }}><Field label="Purpose" hint="Inferred from the code. Used to suggest protections."><SelectBox value={sc.purpose} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Environment" hint="Inferred. Change it if it's wrong."><SelectBox value={env} options={envs} onChange={setEnv} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Purpose" hint={sc.repo ? "Inferred from the code. Used to suggest protections." : "Inferred from the description. Used to suggest protections."}><SelectBox value={purpose} options={purposes} onChange={setPurpose} /></Field></div>
       </div>
       {sc.signal && <Banner tone="warn" title={sc.signal.title}>{sc.signal.body}</Banner>}
       <div style={{ display: "flex", gap: 10 }}>
-        <Tip text={sc.signal ? "The data signal above decides which protections are suggested next." : "Guardrails are suggested because this is a public chatbot."} place="right">
+        <Tip text={sc.signal ? "The data signal above decides which protections are suggested next." : ({ kit: "Guardrails are suggested because this is a public chatbot.", rag: "Guardrails are suggested because answers come from your private documents.", webdb: "Database and HTTPS protections are suggested for any web app with data." } as Partial<Record<ScenarioId, string>>)[sc.id] ?? ""} place="right">
           <Btn onClick={() => ctx.go("compliance")}>Continue</Btn>
         </Tip>
       </div>
@@ -1269,7 +1404,7 @@ function ComplianceScreen() {
   const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
-  const title = sc.id === "health" ? "Recommended protections for health records" : sc.id === "fin" ? "Recommended protections for payment data" : "Recommended protections for a public chatbot";
+  const title = sc.id === "health" ? "Recommended protections for health records" : sc.id === "fin" ? "Recommended protections for payment data" : sc.id === "rag" ? "Recommended protections for private documents" : sc.id === "webdb" ? "Recommended protections for a web app with data" : "Recommended protections for a public chatbot";
   return (
     <ConsoleFrame active="New project">
       <BackLink />
@@ -1307,7 +1442,7 @@ function ComplianceScreen() {
             <Banner tone="bad" title="App Platform, Managed Postgres and the knowledge base can't hold patient data">They are not on DigitalOcean's HIPAA-eligible list. Keep HIPAA mode off only if this app will never store real patient records.</Banner>
           )}
           {sc.id === "fin" && <Banner tone="info" title="Scans run after deploy and after every change">CSPM scans are started by the plan, so you don't have to remember to run them.</Banner>}
-          <div><Btn onClick={() => ctx.go(sc.id === "kit" ? "ask" : "mode")}>Continue</Btn></div>
+          <div><Btn onClick={() => ctx.go(sc.repo ? "mode" : "ask")}>Continue</Btn></div>
         </div>
         <Summary sc={sc} guards={g} />
       </div>
@@ -1348,10 +1483,11 @@ function ModeScreen() {
 
 function KitsScreen() {
   const ctx = useNav();
-  const kits: [string, string, IconName[], string][] = [
-    ["Customer support chatbot", "Answers from your help center with guardrails on.", ["app", "agent", "kb"], "From $44.60/mo + usage"],
-    ["RAG knowledge assistant", "Search and chat over your own documents.", ["agent", "kb", "spaces"], "From $24.60/mo + usage"],
-    ["Web app with database", "A web service and a managed Postgres.", ["app", "db"], "From $27.15/mo"],
+  const [desc, setDesc] = useState("");
+  const kits: [string, string, IconName[], string, ScenarioId][] = [
+    ["Customer support chatbot", "Answers from your help center with guardrails on.", ["app", "agent", "kb"], "From $44.60/mo + usage", "kit"],
+    ["RAG knowledge assistant", "Search and chat over your own documents.", ["agent", "kb", "spaces"], "From $24.60/mo + usage", "rag"],
+    ["Web app with database", "A web service and a managed Postgres.", ["app", "db"], "From $27.15/mo", "webdb"],
   ];
   return (
     <ConsoleFrame active="Starter kits">
@@ -1359,14 +1495,14 @@ function KitsScreen() {
       <PageHeader title="Starter kits" sub="Examples of what a project can be. Picking one fills in the description; the rest of the flow is the same as any new project." />
       {ctx.tips && <Hint text="Kits are just pre-filled descriptions. The chatbot kit walks through a VibeCloud plan with guardrails." />}
       <div style={{ display: "flex", gap: 14 }}>
-        {kits.map(([t, d, ics, p], i) => {
+        {kits.map(([t, d, ics, p, id], i) => {
           const card = (
-            <div onClick={i === 0 ? () => ctx.pickScenario("kit", "analysis") : undefined} style={{ height: "100%", background: DO.white, borderRadius: 8, padding: 18, display: "flex", flexDirection: "column", gap: 10, cursor: i === 0 ? "pointer" : "default", border: i === 0 ? `2px solid ${DO.blue}` : `1px solid ${DO.border}`, opacity: i === 0 ? 1 : 0.7 }}>
+            <div className="do-kit" onClick={() => ctx.pickScenario(id, "analysis")} style={{ height: "100%", boxSizing: "border-box", background: DO.white, borderRadius: 8, padding: 18, display: "flex", flexDirection: "column", gap: 10, cursor: "pointer", border: `1px solid ${DO.border}` }}>
               <div style={{ display: "flex", gap: 6 }}>{ics.map((ic) => <IconTile key={ic} name={ic} size={26} />)}</div>
               <T size={15} weight={700}>{t}</T>
               <T size={12.5} color={DO.text2}>{d}</T>
               <T size={12} color={DO.text3}>{p}</T>
-              <div style={{ marginTop: "auto" }}><Btn variant={i === 0 ? "primary" : "secondary"} full disabled={i !== 0}>Use as starting point</Btn></div>
+              <div style={{ marginTop: "auto" }}><Btn variant={i === 0 ? "primary" : "secondary"} full>Use as starting point</Btn></div>
             </div>
           );
           return (
@@ -1377,7 +1513,10 @@ function KitsScreen() {
           );
         })}
       </div>
-      <Field label="Or describe what you want" hint="A sentence is enough. Add a cost ceiling if you have one."><TextBox value="" /></Field>
+      <Field label="Or describe what you want" hint="A sentence is enough. Add a cost ceiling if you have one.">
+        <TextBox value={desc} onChange={setDesc} placeholder="e.g. A chatbot that answers from our help center. Keep usage under $30 a month." />
+      </Field>
+      <div><Btn disabled={!desc.trim()} onClick={() => { ctx.setAsk({ text: desc.trim() }, "kit"); ctx.pickScenario("kit", "analysis"); }}>Continue with this description</Btn></div>
     </ConsoleFrame>
   );
 }
@@ -1421,7 +1560,9 @@ function planMeter(sc: Scenario, g: Guards, spent: number, warn?: boolean, pause
 function AskScreen() {
   const ctx = useNav();
   const sc = ctx.sc;
-  const u = usageFor(sc, ctx.guards);
+  const { ask, setAsk } = ctx;
+  const u = usageFor(sc, ctx.guards, ask.pause);
+  const empty = !ask.text.trim();
   return (
     <ConsoleFrame active="New project">
       <BackLink />
@@ -1429,22 +1570,32 @@ function AskScreen() {
       <PageHeader crumb={`New project · ${sc.project} · VibeCloud`} title="What should this project do?" sub="Say the outcome and a cost ceiling. We turn it into a priced plan you can read before anything is created." />
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <Card style={{ flex: 1, minWidth: 420 }}>
-          <Field label="Outcome"><TextBox value={sc.ask} /></Field>
+          <Field label="Outcome" hint={empty ? "Describe what the app should do and any limits, like a monthly budget." : undefined}>
+            <TextBox value={ask.text} onChange={(v) => setAsk({ text: v })} placeholder="e.g. Deploy my repo, keep patient data inside HIPAA-eligible services, under $80 a month." />
+          </Field>
+          {empty && (
+            <div style={{ marginTop: -6, marginBottom: 10, display: "flex", gap: 10, alignItems: "center" }}>
+              <T size={12} color={DO.red}>Add an outcome to build a plan.</T>
+              <Btn variant="link" onClick={() => setAsk({ text: sc.ask })}>Use suggested outcome</Btn>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 14 }}>
-            <div style={{ flex: 1 }}><Field label="Datacenter region"><SelectBox value="New York · NYC3" /></Field></div>
-            <div style={{ flex: 1 }}><Field label="Size"><SelectBox value="Smallest that passes checks" /></Field></div>
+            <div style={{ flex: 1 }}><Field label="Datacenter region"><SelectBox value={ask.region} options={REGIONS} onChange={(v) => setAsk({ region: v })} /></Field></div>
+            <div style={{ flex: 1 }}><Field label="Size"><SelectBox value={ask.size} options={SIZES} onChange={(v) => setAsk({ size: v })} /></Field></div>
           </div>
           <div style={{ display: "flex", gap: 14 }}>
-            {sc.id === "kit" && <div style={{ flex: 1 }}><Field label="Model"><SelectBox value="nemotron-3-super-120b" /></Field></div>}
+            {hasAgent(sc) && <div style={{ flex: 1 }}><Field label="Model"><SelectBox value={ask.model} options={MODELS} onChange={(v) => setAsk({ model: v })} /></Field></div>}
             <div style={{ flex: 1 }}>
               <Field label="Pause point" hint={u.pauseAt ? "Usage stops growing at this amount. The app stays up. Not a bill cap." : "No usage-billed parts in this plan, so there's nothing to pause."}>
-                <Input value={u.pauseAt ? money(u.pauseAt) : "Not needed"} />
+                {u.pauseAt
+                  ? <SelectBox value={money(ask.pause)} options={PAUSES.map(money)} onChange={(v) => setAsk({ pause: PAUSES.find((p) => money(p) === v) ?? ask.pause })} />
+                  : <Input value="Not needed" />}
               </Field>
             </div>
           </div>
           <T size={12} color={DO.text3}>Only these can change here. Everything else comes from the repo, the protections you kept, and your sentence.</T>
         </Card>
-        <Summary sc={sc} guards={ctx.guards} cta="Build plan" onCta={() => ctx.go("plan")} />
+        <Summary sc={sc} guards={ctx.guards} cta="Build plan" onCta={() => ctx.go("plan")} disabled={empty} />
       </div>
     </ConsoleFrame>
   );
@@ -1454,7 +1605,7 @@ function PlanScreen() {
   const ctx = useNav();
   const sc = ctx.sc;
   const g = ctx.guards;
-  const u = usageFor(sc, g);
+  const u = usageFor(sc, g, ctx.ask.pause);
   const proof = g.hipaa && sc.hipaaProof ? sc.hipaaProof : sc.proof;
   return (
     <ConsoleFrame active="New project">
@@ -1471,6 +1622,9 @@ function PlanScreen() {
           <KV k="Prove it works" v={proof.q} />
           <KV k="Keep watch" v="Hourly checks. You hear within the hour if one fails, with the last change and who made it." />
           <KV k="Weekly brief" v="Health, cost against this estimate, and upkeep drafts." />
+          <KV k="Your outcome" v={ctx.ask.text || sc.ask} />
+          <KV k="Region and size" v={`${ctx.ask.region} · ${ctx.ask.size}`} />
+          {hasAgent(sc) && <KV k="Model" v={ctx.ask.model} />}
           {u.pauseAt > 0 && <KV k="Pause point" v={`${money(u.pauseAt)} of usage. The app stays up.`} />}
           <KV k="Undo" v="Every change can be undone for 72 hours." />
           <KV k="Leave" v="Export to Terraform or release the plan any time. Resources keep running." />
@@ -1541,7 +1695,7 @@ function ApproveScreen() {
   const isChange = ctx.change;
   const extra = isChange ? [...ctx.extra.filter((e) => e.name !== WORKER.name), WORKER] : ctx.extra;
   const lines = [...linesFor(sc, g), ...extra];
-  const u = usageFor(sc, g);
+  const u = usageFor(sc, g, ctx.ask.pause);
   const vibe = ctx.mode === "vibe";
   const approve = () => {
     if (isChange) {
@@ -1706,7 +1860,8 @@ function ViewToggle({ view, setView }: { view: "map" | "list"; setView: (v: "map
 function DaySwitch() {
   const ctx = useNav();
   const later = LATER[ctx.sc.id];
-  const items: [DayN, string][] = [[0, "Day 0 · deployed"], [later, LATER_LABEL[ctx.sc.id]]];
+  if (!later) return null;
+  const items: [DayN, string][] = [[0, "Day 0 · deployed"], [later, LATER_LABEL[ctx.sc.id] ?? ""]];
   const seg = (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
       <T size={12} weight={600} color={DO.text3} style={{ textTransform: "uppercase", letterSpacing: 0.4 }}>Timeline</T>
@@ -1717,7 +1872,7 @@ function DaySwitch() {
       </div>
     </div>
   );
-  const done = ctx.resolved.includes({ health: "health-fw", fin: "fin-ssh", kit: "kit-raise" }[ctx.sc.id]);
+  const done = ctx.resolved.includes(({ health: "health-fw", fin: "fin-ssh", kit: "kit-raise" } as Partial<Record<ScenarioId, string>>)[ctx.sc.id] ?? "");
   return ctx.day === 0 && !done ? <Tip text={`Jump to Day ${later} to see what the owner of ${ctx.sc.project} sees later.`}>{seg}</Tip> : seg;
 }
 
@@ -1742,7 +1897,7 @@ function ProjectScreen() {
   const r = ctx.resolved;
   const vibe = ctx.mode === "vibe";
   const lines = [...linesFor(sc, g), ...ctx.extra];
-  const u = usageFor(sc, g);
+  const u = usageFor(sc, g, ctx.ask.pause);
   const monthly = fixedTotal(sc, g, ctx.extra);
   const day = ctx.day;
   const hasWorker = ctx.extra.some((e) => e.name === WORKER.name);
@@ -1752,7 +1907,7 @@ function ProjectScreen() {
   let banner: ReactNode = null;
   let stats: [string, string, string?][] = [];
   let overrides: Record<string, NodeState> | undefined;
-  let meter = vibe ? planMeter(sc, g, 0.4) : undefined;
+  let meter = vibe ? planMeter(sc, g, 0.4, false, u.pauseAt) : undefined;
   let groupRight = vibe ? "verified · checked hourly" : "you manage";
   let below: ReactNode = null;
 
@@ -1851,12 +2006,12 @@ function ProjectScreen() {
   if (day !== 0 && sc.id === "kit") {
     const raised = r.includes("kit-raise");
     banner = raised ? (
-      <Banner tone="ok" title="Day 30 · pause point raised to $45">Answers resumed at 10:02. Undo is in Activity for 72 hours.</Banner>
+      <Banner tone="ok" title={`Day 30 · pause point raised to ${money(u.pauseAt + 15)}`}>Answers resumed at 10:02. Undo is in Activity for 72 hours.</Banner>
     ) : (
       <Banner tone="warn" title={`Day 30 · usage paused at ${money(u.pauseAt)}`}>Traffic was 5x the estimate after launch, and this month's usage budget ran out on day 27. The chatbot is still up and shows a "Contact support" link instead of answers. Fixed costs keep billing. This is a pause point, not a bill cap.</Banner>
     );
     overrides = raised ? undefined : { agent: ["warn", "Paused · usage limit"], "help-kb": ["warn", "Paused · no new queries"] };
-    meter = raised ? planMeter(sc, g, 31.2, false, 45) : planMeter(sc, g, u.pauseAt, true);
+    meter = raised ? planMeter(sc, g, 31.2, false, u.pauseAt + 15) : planMeter(sc, g, u.pauseAt, true);
     groupRight = raised ? "verified · checked hourly" : "paused";
     stats = [["This month", `${money(monthly)} + ${money(raised ? 31.2 : u.pauseAt)} usage`], ["Usage vs estimate", `${money(raised ? 31.2 : u.pauseAt)} vs ${money(u.estimate)}`, DO.amber], ["Checks this month", "719 of 720 passed", DO.green]];
     below = (
@@ -1866,7 +2021,7 @@ function ProjectScreen() {
             <SectionLabel>Choose what happens next</SectionLabel>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <Tip text="Raising the pause point is a change too, so it can be undone from Activity.">
-                <Btn onClick={() => ctx.resolve("kit-raise")}>Raise pause point to $45</Btn>
+                <Btn onClick={() => ctx.resolve("kit-raise")}>{`Raise pause point to ${money(u.pauseAt + 15)}`}</Btn>
               </Tip>
               <Btn variant="secondary">Stay paused until Oct 1</Btn>
             </div>
@@ -1910,6 +2065,7 @@ function ProjectScreen() {
 
 function AddScreen() {
   const ctx = useNav();
+  const [change, setChangeText] = useState("Send appointment reminder emails to patients every morning at 7.");
   const sc = ctx.sc;
   const lines = linesFor(sc, ctx.guards);
   return (
@@ -1919,7 +2075,7 @@ function AddScreen() {
         <Card>
           <T size={18} weight={700} color={DO.navy}>Add to this project</T>
           <T size={12.5} color={DO.text2}>Same flow as a new project. What's already here is used as context, and HIPAA mode stays on.</T>
-          <Field label="What should change?"><TextBox value="Send appointment reminder emails to patients every morning at 7." /></Field>
+          <Field label="What should change?"><TextBox value={change} onChange={setChangeText} /></Field>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <T size={12} color={DO.text3}>Context:</T>
             {lines.map((l) => <Chip key={l.name}>{l.name}</Chip>)}
@@ -1996,8 +2152,8 @@ function BriefScreen() {
       <T size={18} weight={700}>Month 1 brief · support-bot</T>
       <div style={{ display: "flex", gap: 10 }}>
         <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Health</T><T weight={700}>719 of 720 checks passed</T></Card>
-        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>This month</T><T weight={700}>$44.60 fixed + $30 usage</T></Card>
-        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Pause point</T><T weight={700} color={raised ? DO.green : DO.amber}>{raised ? "Raised to $45" : "Reached on day 27"}</T></Card>
+        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>This month</T><T weight={700}>{`$44.60 fixed + ${money(ctx.askOf("kit").pause)} usage`}</T></Card>
+        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Pause point</T><T weight={700} color={raised ? DO.green : DO.amber}>{raised ? `Raised to ${money(ctx.askOf("kit").pause + 15)}` : "Reached on day 27"}</T></Card>
       </div>
       <T size={12.5} color={DO.text2}>Traffic was 5x the estimate after launch. 4,812 questions answered; guardrails blocked 12 jailbreak attempts.</T>
       <SectionLabel>Upkeep drafts</SectionLabel>
@@ -2026,7 +2182,7 @@ function UndoScreen() {
   if (sc.id === "kit") {
     if (r.includes("kit-model")) rows.push(["Day 30", "Switched agent to the newer model", "plan (approved by you)", true]);
     if (r.includes("kit-reindex")) rows.push(["Day 30", "Re-indexed help-kb with /guides", "plan (approved by you)", true]);
-    if (r.includes("kit-raise")) rows.push(["Day 30 10:02", "Raised pause point $30 → $45", sc.owner, true]);
+    if (r.includes("kit-raise")) rows.push(["Day 30 10:02", `Raised pause point ${money(ctx.ask.pause)} → ${money(ctx.ask.pause + 15)}`, sc.owner, true]);
   }
   if (sc.id === "health") {
     if (ctx.extra.some((e) => e.name === WORKER.name)) rows.push(["Day 7", "Added worker-1 for appointment reminders", "plan (approved by you)", true]);
@@ -2184,19 +2340,21 @@ function Welcome({ onPick, onClose }: { onPick: (id: ScenarioId) => void; onClos
 /* App                                                                 */
 /* ------------------------------------------------------------------ */
 
-const IDS: ScenarioId[] = ["health", "fin", "kit"];
+const IDS: ScenarioId[] = ["health", "fin", "kit", "rag", "webdb"];
+const byId = <V,>(f: (id: ScenarioId) => V) => Object.fromEntries(IDS.map((id) => [id, f(id)])) as Record<ScenarioId, V>;
 
 export default function Prototype() {
   const [stack, setStack] = useState<ScreenId[]>(["home"]);
   const [scId, setScId] = useState<ScenarioId>("health");
   const [guardsBy, setGuardsBy] = useState<Record<ScenarioId, Guards>>(() => Object.fromEntries(IDS.map((id) => [id, defaultGuards(SCENARIOS[id])])) as Record<ScenarioId, Guards>);
-  const [modeBy, setModeBy] = useState<Record<ScenarioId, Mode>>({ health: "vibe", fin: "vibe", kit: "vibe" });
-  const [extraBy, setExtraBy] = useState<Record<ScenarioId, Line[]>>({ health: [], fin: [], kit: [] });
+  const [modeBy, setModeBy] = useState<Record<ScenarioId, Mode>>(() => byId(() => "vibe" as Mode));
+  const [extraBy, setExtraBy] = useState<Record<ScenarioId, Line[]>>(() => byId(() => [] as Line[]));
   const [missingScope, setMissingScope] = useState(false);
   const [created, setCreated] = useState<ScenarioId[]>([]);
   const [change, setChange] = useState(false);
-  const [dayBy, setDayBy] = useState<Record<ScenarioId, DayN>>({ health: 0, fin: 0, kit: 0 });
+  const [dayBy, setDayBy] = useState<Record<ScenarioId, DayN>>(() => byId(() => 0 as DayN));
   const [resolved, setResolved] = useState<string[]>([]);
+  const [askBy, setAskBy] = useState<Record<ScenarioId, AskState>>(() => Object.fromEntries(IDS.map((id) => [id, defaultAsk(SCENARIOS[id])])) as Record<ScenarioId, AskState>);
   const [startChoice, setStartChoice] = useState<StartChoice>("github");
   const [tour, setTour] = useState<ScenarioId | null>(null);
   const [tips, setTips] = useState(true);
@@ -2236,6 +2394,9 @@ export default function Prototype() {
     },
     change,
     setChange,
+    ask: askBy[scId],
+    askOf: (id) => askBy[id],
+    setAsk: (p, id) => setAskBy((prev) => ({ ...prev, [id ?? scId]: { ...prev[id ?? scId], ...p } })),
     day: dayBy[scId],
     setDay: (d, id) => setDayBy((prev) => ({ ...prev, [id ?? scId]: d })),
     resolved,
