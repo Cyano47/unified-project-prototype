@@ -577,7 +577,11 @@ function mapKey(sc: Scenario, g: Guards) {
 
 type ScreenId =
   | "home" | "start" | "github" | "analysis" | "compliance" | "mode" | "kits" | "ask" | "plan" | "manual" | "empty"
-  | "approve" | "deploy" | "project" | "add" | "diff" | "alertEmail" | "alertConsole" | "brief" | "pause" | "undo" | "export" | "agent";
+  | "approve" | "deploy" | "project" | "add" | "diff" | "alertEmail" | "brief" | "undo" | "export" | "agent";
+
+type DayN = 0 | 7 | 30;
+const LATER: Record<ScenarioId, DayN> = { health: 7, fin: 7, kit: 30 };
+const LATER_LABEL: Record<ScenarioId, string> = { health: "Day 7 · a check fails", fin: "Day 7 · first scan findings", kit: "Day 30 · pause point" };
 
 type Mode = "vibe" | "manual";
 type StartChoice = "github" | "describe" | "empty";
@@ -603,10 +607,10 @@ type Ctx = {
   markCreated: () => void;
   change: boolean;
   setChange: (v: boolean) => void;
-  fixed: boolean;
-  setFixed: (v: boolean) => void;
-  raised: boolean;
-  setRaised: (v: boolean) => void;
+  day: DayN;
+  setDay: (d: DayN, id?: ScenarioId) => void;
+  resolved: string[];
+  resolve: (id: string) => void;
   startChoice: StartChoice;
   setStartChoice: (c: StartChoice) => void;
   tour: ScenarioId | null;
@@ -931,17 +935,24 @@ function NavHeader({ label, open }: { label: string; open?: boolean }) {
   );
 }
 
-type Note = { title: string; sub: string; tone: Tone; sc: ScenarioId; to?: ScreenId };
+type Note = { title: string; sub: string; tone: Tone; sc: ScenarioId; day: DayN; to: ScreenId; open: boolean };
 
 function notesFor(ctx: Ctx): Note[] {
+  const r = ctx.resolved;
   const out: Note[] = [];
-  if (ctx.created.includes("kit")) {
-    if (!ctx.fixed) out.push({ title: "support-bot stopped answering", sub: "Day 9 · hourly check failed", tone: "bad", sc: "kit", to: "alertEmail" });
-    out.push({ title: "Weekly brief · support-bot", sub: "Week 6 · 2 upkeep drafts", tone: "info", sc: "kit", to: "brief" });
-    if (!ctx.raised) out.push({ title: "support-bot reached its pause point", sub: "Month 3 · usage paused, app still up", tone: "warn", sc: "kit", to: "pause" });
+  if (ctx.created.includes("health")) {
+    const open = !r.includes("health-fw");
+    out.push({ title: open ? "clinic-notes · db-1 reachable from the internet" : "clinic-notes · check fixed", sub: "Day 7 · hourly check", tone: open ? "bad" : "ok", sc: "health", day: 7, to: open ? "alertEmail" : "project", open });
   }
-  if (ctx.created.includes("health")) out.push({ title: "clinic-notes · CSPM scan passed", sub: "web-1 and db-1 · 0 critical", tone: "ok", sc: "health" });
-  if (ctx.created.includes("fin")) out.push({ title: "ledger-app · CSPM scan passed", sub: "api-1 and ledger-db · 0 critical", tone: "ok", sc: "fin" });
+  if (ctx.created.includes("fin")) {
+    const open = !r.includes("fin-ssh");
+    out.push({ title: open ? "ledger-app · CSPM found 1 high finding" : "ledger-app · high finding fixed", sub: "Day 7 · CSPM scan", tone: open ? "warn" : "ok", sc: "fin", day: 7, to: "project", open });
+  }
+  if (ctx.created.includes("kit")) {
+    const open = !r.includes("kit-raise");
+    out.push({ title: open ? "support-bot reached its pause point" : "support-bot pause point raised to $45", sub: "Day 30 · usage", tone: open ? "warn" : "ok", sc: "kit", day: 30, to: "project", open });
+    out.push({ title: "Month 1 brief · support-bot", sub: "Day 30 · 2 upkeep drafts", tone: "info", sc: "kit", day: 30, to: "brief", open: false });
+  }
   return out;
 }
 
@@ -949,8 +960,7 @@ function ConsoleFrame({ children, active }: { children: ReactNode; active: strin
   const ctx = useNav();
   const [bell, setBell] = useState(false);
   const notes = notesFor(ctx);
-  const urgent = notes.filter((n) => n.to).length;
-  const bellTip = ctx.screen === "project" && ctx.sc.id === "kit" && notes.some((n) => n.to);
+  const urgent = notes.filter((n) => n.open).length;
   return (
     <div style={{ fontFamily: DO.font, display: "flex", minHeight: "100vh", background: DO.page, color: DO.text }}>
       <div style={{ width: 200, flexShrink: 0, background: DO.navy, display: "flex", flexDirection: "column", paddingBottom: 16 }}>
@@ -988,12 +998,10 @@ function ConsoleFrame({ children, active }: { children: ReactNode; active: strin
           </div>
           <div style={{ color: DO.text2, display: "flex", gap: 12, alignItems: "center" }}>
             <Ico name="help" size={17} />
-            <Tip text="Jump ahead in time. Each notification opens what the owner sees on that day." place="left" show={bellTip && !bell}>
-              <div onClick={() => setBell(!bell)} style={{ position: "relative", cursor: "pointer", display: "flex", padding: 2 }}>
-                <Ico name="bell" size={17} />
-                {urgent > 0 && <span style={{ position: "absolute", top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, background: DO.redDot, color: DO.white, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{urgent}</span>}
-              </div>
-            </Tip>
+            <div onClick={() => setBell(!bell)} style={{ position: "relative", cursor: "pointer", display: "flex", padding: 2 }}>
+              <Ico name="bell" size={17} />
+              {urgent > 0 && <span style={{ position: "absolute", top: -4, right: -6, minWidth: 14, height: 14, borderRadius: 7, background: DO.redDot, color: DO.white, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{urgent}</span>}
+            </div>
             <Ico name="sun" size={17} />
           </div>
           <T size={12.5} color={DO.text2}>Test</T>
@@ -1008,7 +1016,7 @@ function ConsoleFrame({ children, active }: { children: ReactNode; active: strin
               {notes.map((n) => (
                 <div
                   key={n.title}
-                  onClick={() => { setBell(false); ctx.pickScenario(n.sc, n.to ?? "project"); }}
+                  onClick={() => { setBell(false); ctx.setDay(n.day, n.sc); ctx.pickScenario(n.sc, n.to); }}
                   style={{ display: "flex", gap: 10, padding: "10px 14px", borderBottom: `1px solid ${DO.border}`, cursor: "pointer" }}
                 >
                   <span style={{ width: 8, height: 8, borderRadius: 4, marginTop: 5, flexShrink: 0, background: { ok: DO.greenDot, warn: DO.amberDot, bad: DO.redDot, info: DO.blue, draft: DO.text3, neutral: DO.text3 }[n.tone] }} />
@@ -1695,35 +1703,203 @@ function ViewToggle({ view, setView }: { view: "map" | "list"; setView: (v: "map
   );
 }
 
+function DaySwitch() {
+  const ctx = useNav();
+  const later = LATER[ctx.sc.id];
+  const items: [DayN, string][] = [[0, "Day 0 · deployed"], [later, LATER_LABEL[ctx.sc.id]]];
+  const seg = (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+      <T size={12} weight={600} color={DO.text3} style={{ textTransform: "uppercase", letterSpacing: 0.4 }}>Timeline</T>
+      <div style={{ display: "inline-flex", border: `1px solid ${DO.border}`, borderRadius: 18, overflow: "hidden", background: DO.white }}>
+        {items.map(([d, label]) => (
+          <div key={d} onClick={() => ctx.setDay(d)} style={{ padding: "6px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", background: ctx.day === d ? DO.blue : DO.white, color: ctx.day === d ? DO.white : DO.text2 }}>{label}</div>
+        ))}
+      </div>
+    </div>
+  );
+  const done = ctx.resolved.includes({ health: "health-fw", fin: "fin-ssh", kit: "kit-raise" }[ctx.sc.id]);
+  return ctx.day === 0 && !done ? <Tip text={`Jump to Day ${later} to see what the owner of ${ctx.sc.project} sees later.`}>{seg}</Tip> : seg;
+}
+
+function Stat3({ items }: { items: [string, string, string?][] }) {
+  return (
+    <div style={{ display: "flex", gap: 12 }}>
+      {items.map(([k, v, c]) => (
+        <Card key={k} pad={14} style={{ flex: 1, gap: 2 }}>
+          <T size={12} color={DO.text3}>{k}</T>
+          <T size={18} weight={700} color={c ?? DO.text}>{v}</T>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 function ProjectScreen() {
   const ctx = useNav();
   const [view, setView] = useState<"map" | "list">("map");
   const sc = ctx.sc;
   const g = ctx.guards;
+  const r = ctx.resolved;
   const vibe = ctx.mode === "vibe";
   const lines = [...linesFor(sc, g), ...ctx.extra];
   const u = usageFor(sc, g);
-  const canChange = sc.id === "health" && g.hipaa && !ctx.extra.some((e) => e.name === WORKER.name);
+  const monthly = fixedTotal(sc, g, ctx.extra);
+  const day = ctx.day;
+  const hasWorker = ctx.extra.some((e) => e.name === WORKER.name);
+  const canChange = day === 0 && sc.id === "health" && g.hipaa && !hasWorker && r.includes("health-fw");
   const addBtn = <Btn icon="plus" variant={canChange ? "primary" : "secondary"} onClick={() => (sc.id === "health" && g.hipaa ? (ctx.setChange(true), ctx.go("add")) : ctx.go("start"))}>Add to this project</Btn>;
+
+  let banner: ReactNode = null;
+  let stats: [string, string, string?][] = [];
+  let overrides: Record<string, NodeState> | undefined;
+  let meter = vibe ? planMeter(sc, g, 0.4) : undefined;
+  let groupRight = vibe ? "verified · checked hourly" : "you manage";
+  let below: ReactNode = null;
+
+  if (day === 0) {
+    banner = vibe ? (
+      <Banner tone="ok" title="Day 0 · live and verified">{`First hourly check runs in 60 minutes. First brief arrives Monday. Pause point: ${u.pauseAt ? money(u.pauseAt) : "not needed, nothing here is usage-billed"}.`}</Banner>
+    ) : (
+      <Banner tone="ok" title="Day 0 · live">The first CSPM scan passed with 0 critical findings. In Manual mode there are no hourly checks; changes and scans are up to you.</Banner>
+    );
+    if (hasWorker && sc.id === "health") banner = <Banner tone="ok" title="Change applied">worker-1 is live and sending reminders. Undo is available for 72 hours in Activity.</Banner>;
+    stats = [["Monthly estimate", `${money(monthly)}${u.pauseAt ? " + usage" : ""}`], [vibe ? "Checks" : "Protections", vibe ? "1 of 1 passed" : `${sc.guards.filter((x) => g[x.id]).length} on`], [vibe ? "First brief" : "Last CSPM scan", vibe ? "Monday" : "0 critical"]];
+    below = g.hipaa ? (
+      <Card>
+        <SectionLabel>Before real patient data</SectionLabel>
+        <KV k="Sign the BAA" v="Requested through Sales or Support. Deployed resources are ready; the agreement is what makes them HIPAA-covered." />
+        <div><Btn variant="secondary">Request BAA</Btn></div>
+      </Card>
+    ) : null;
+  }
+
+  if (day !== 0 && sc.id === "health") {
+    const open = !r.includes("health-fw");
+    banner = open ? (
+      <Banner tone="bad" title="Day 7 · check failing since 14:02: db-1 accepts connections from the internet">A firewall rule opened port 5432 to 0.0.0.0/0 at 13:48, added by dev@brightpath.health. Patient data could be exposed, and HIPAA posture is broken until it's reverted.</Banner>
+    ) : (
+      <Banner tone="ok" title="Day 7 · fixed at 14:09">db-1 accepts traffic from web-1 only again. The CSPM rescan passed. Undo is in Activity for 72 hours.</Banner>
+    );
+    overrides = open ? { "db-1": ["bad", "5432 open to internet"] } : undefined;
+    groupRight = open ? "check failed" : "verified · checked hourly";
+    stats = [["Cost so far", `${money((monthly * 7) / 30)} of ${money(monthly)}`, DO.text], ["Checks this week", open ? "167 of 168 passed" : "168 of 168 passed", open ? DO.red : DO.green], ["BAA", "Not signed yet", DO.amber]];
+    below = (
+      <>
+        {open && (
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><SectionLabel>Proposed fix</SectionLabel><Badge tone="draft">Draft</Badge></div>
+            <DTable headers={["Step", "Part", "Cost"]} rows={[["Remove the 5432 rule open to 0.0.0.0/0", "db-1 firewall", "$0"], ["Rescan db-1 with CSPM", "db-1", "Included"], ["Confirm web-1 still reaches the database", "web-1 → db-1", "$0"]]} />
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Tip text="Apply the fix. The map turns green and the change lands in Activity with an undo.">
+                <Btn onClick={() => ctx.resolve("health-fw")}>Apply fix</Btn>
+              </Tip>
+              <Btn variant="secondary">This was on purpose</Btn>
+            </div>
+          </Card>
+        )}
+        <Card>
+          <SectionLabel>Week 1 brief</SectionLabel>
+          <KV k="Health" v={open ? "1 failed check (open right now)" : "1 failed check, fixed in 7 minutes"} />
+          <KV k="Cost" v={`${money((monthly * 7) / 30)} so far. On track for the ${money(monthly)} estimate.`} />
+          <KV k="Backups" v="First weekly backup of web-1 and db-1 finished Sunday 03:00." />
+          <KV k="BAA" v="Still not signed. Don't store real patient records yet." />
+        </Card>
+      </>
+    );
+  }
+
+  if (day !== 0 && sc.id === "fin") {
+    const ssh = !r.includes("fin-ssh");
+    const valkey = !r.includes("fin-valkey");
+    const scanBy = vibe ? "The scan the plan ran after Tuesday's change" : "The CSPM scan you ran on Day 7";
+    banner = ssh || valkey ? (
+      <Banner tone="warn" title={`Day 7 · ${[ssh && "1 high", valkey && "1 medium"].filter(Boolean).join(", ")} finding`}>{`${scanBy} found problems on api-1 and jobs-cache.`}</Banner>
+    ) : (
+      <Banner tone="ok" title="Day 7 · all findings fixed">Rescan passed with 0 findings.</Banner>
+    );
+    overrides = { ...(ssh ? { "api-1": ["warn", "SSH open to everyone"] as NodeState } : {}), ...(valkey ? { "jobs-cache": ["warn", "No trusted sources"] as NodeState } : {}) };
+    groupRight = ssh || valkey ? "findings open" : groupRight;
+    stats = [["Cost so far", `${money((monthly * 7) / 30)} of ${money(monthly)}`], ["CSPM findings", `${(ssh ? 1 : 0) + (valkey ? 1 : 0)} open`, ssh || valkey ? DO.amber : DO.green], ["Backups", g.backup ? "On" : "Off", g.backup ? DO.green : DO.amber]];
+    below = (
+      <>
+        <Card>
+          <SectionLabel>CSPM findings</SectionLabel>
+          {ctx.tips && ssh && <Hint text="Each Quick Fix changes one setting. Try the high finding first and watch api-1 turn green on the map." />}
+          <DTable
+            headers={["Severity", "Finding", "Fix"]}
+            tones={[ssh ? "warn" : "ok", valkey ? "warn" : "ok"]}
+            rows={[
+              [ssh ? "High" : "Fixed", "api-1: SSH (22) open to 0.0.0.0/0", ssh ? <Btn variant="secondary" onClick={() => ctx.resolve("fin-ssh")}>Quick Fix: office IP only</Btn> : <Badge tone="ok">Limited to 203.0.113.10/32</Badge>],
+              [valkey ? "Medium" : "Fixed", "jobs-cache: accepts any source in the VPC", valkey ? <Btn variant="secondary" onClick={() => ctx.resolve("fin-valkey")}>Trust api-1 only</Btn> : <Badge tone="ok">api-1 only</Badge>],
+            ]}
+          />
+        </Card>
+        {!vibe && (
+          <Card style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <IconTile name="sparkle" size={34} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+              <T weight={600}>Let VibeCloud watch ledger-app</T>
+              <T size={12.5} color={DO.text2}>Hourly checks, a weekly brief and undo for the resources you already picked. Nothing is recreated and nothing extra bills.</T>
+            </div>
+            <Btn variant="secondary" onClick={() => ctx.setMode("vibe")}>Turn on</Btn>
+          </Card>
+        )}
+      </>
+    );
+  }
+
+  if (day !== 0 && sc.id === "kit") {
+    const raised = r.includes("kit-raise");
+    banner = raised ? (
+      <Banner tone="ok" title="Day 30 · pause point raised to $45">Answers resumed at 10:02. Undo is in Activity for 72 hours.</Banner>
+    ) : (
+      <Banner tone="warn" title={`Day 30 · usage paused at ${money(u.pauseAt)}`}>Traffic was 5x the estimate after launch, and this month's usage budget ran out on day 27. The chatbot is still up and shows a "Contact support" link instead of answers. Fixed costs keep billing. This is a pause point, not a bill cap.</Banner>
+    );
+    overrides = raised ? undefined : { agent: ["warn", "Paused · usage limit"], "help-kb": ["warn", "Paused · no new queries"] };
+    meter = raised ? planMeter(sc, g, 31.2, false, 45) : planMeter(sc, g, u.pauseAt, true);
+    groupRight = raised ? "verified · checked hourly" : "paused";
+    stats = [["This month", `${money(monthly)} + ${money(raised ? 31.2 : u.pauseAt)} usage`], ["Usage vs estimate", `${money(raised ? 31.2 : u.pauseAt)} vs ${money(u.estimate)}`, DO.amber], ["Checks this month", "719 of 720 passed", DO.green]];
+    below = (
+      <>
+        {!raised && (
+          <Card>
+            <SectionLabel>Choose what happens next</SectionLabel>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <Tip text="Raising the pause point is a change too, so it can be undone from Activity.">
+                <Btn onClick={() => ctx.resolve("kit-raise")}>Raise pause point to $45</Btn>
+              </Tip>
+              <Btn variant="secondary">Stay paused until Oct 1</Btn>
+            </div>
+          </Card>
+        )}
+        <Card>
+          <SectionLabel>Month 1 brief</SectionLabel>
+          <KV k="Guardrails" v="Blocked 12 jailbreak attempts and redacted 31 email addresses from answers." />
+          <KV k="Answers" v="4,812 questions answered. 6% sent to Contact support because help-kb had no match." />
+          <DTable
+            headers={["Upkeep draft", "Cost", ""]}
+            rows={[
+              ["help.acme.io added /guides (42 pages). Re-index help-kb.", "About $0.02 once", r.includes("kit-reindex") ? <Badge tone="ok">Done</Badge> : <Btn variant="secondary" onClick={() => ctx.resolve("kit-reindex")}>Approve</Btn>],
+              ["A newer model answers 9 of 10 test questions vs 8 of 10, same price.", "$0", r.includes("kit-model") ? <Badge tone="ok">Switched</Badge> : <Btn variant="secondary" onClick={() => ctx.resolve("kit-model")}>Approve</Btn>],
+            ]}
+          />
+        </Card>
+      </>
+    );
+  }
+
   return (
-    <ProjectShell
-      tab="Resources"
-      right={canChange ? <Tip text="Add a feature to a live project. The same flow returns a change plan on top of what exists." place="left">{addBtn}</Tip> : addBtn}
-      banner={ctx.extra.some((e) => e.name === WORKER.name) && sc.id === "health" ? <Banner tone="ok" title="Change applied">worker-1 is live and sending reminders. Undo is available for 72 hours in Activity.</Banner> : undefined}
-    >
-      <div style={{ display: "flex", gap: 12 }}>
-        <Card pad={14} style={{ flex: 1, gap: 2 }}><T size={12} color={DO.text3}>Monthly cost</T><T size={18} weight={700}>{`${money(fixedTotal(sc, g, ctx.extra))}${u.pauseAt ? " + usage" : ""}`}</T></Card>
-        <Card pad={14} style={{ flex: 1, gap: 2 }}><T size={12} color={DO.text3}>{vibe ? "Checks" : "Protections"}</T><T size={18} weight={700}>{vibe ? "Passing · hourly" : `${sc.guards.filter((x) => g[x.id]).length} on`}</T></Card>
-        <Card pad={14} style={{ flex: 1, gap: 2 }}><T size={12} color={DO.text3}>{vibe ? "Next brief" : "Last CSPM scan"}</T><T size={18} weight={700}>{vibe ? "Monday" : "0 critical"}</T></Card>
-      </div>
-      <Tip text="Map shows how the parts connect. List is the resource view you know. Click a box for details." place="right" show={sc.id === "fin"}>
-        <ViewToggle view={view} setView={setView} />
-      </Tip>
+    <ProjectShell tab="Resources" right={canChange ? <Tip text="Add a feature to a live project. The same flow returns a change plan on top of what exists." place="left">{addBtn}</Tip> : addBtn}>
+      <DaySwitch />
+      {banner}
+      <Stat3 items={stats} />
+      <ViewToggle view={view} setView={setView} />
       {view === "map" ? (
-        <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={lines} mode="live" groupLabel={`${vibe ? "Plan" : "Resources"} · ${sc.project}`} groupRight={vibe ? "verified · checked hourly" : "you manage"} meter={vibe ? planMeter(sc, g, 3.4, false, ctx.raised && sc.id === "kit" ? 45 : undefined) : undefined} />
+        <MapWithDrawer map={MAPS[mapKey(sc, g)]} lines={lines} mode="live" overrides={overrides} groupLabel={`${vibe ? "Plan" : "Resources"} · ${sc.project}`} groupRight={groupRight} meter={meter} />
       ) : (
-        <ResourceList sc={sc} lines={lines} vibe={vibe} />
+        <ResourceList sc={sc} lines={lines} vibe={vibe} tones={overrides} />
       )}
+      {below}
     </ProjectShell>
   );
 }
@@ -1794,126 +1970,89 @@ function AlertEmailScreen() {
   const ctx = useNav();
   return (
     <EmailFrame>
-      <T size={12} color={DO.text3}>{`To ${ctx.sc.owner} · Day 9 · 09:14`}</T>
-      <T size={18} weight={700}>support-bot stopped answering</T>
-      <Banner tone="bad" title="Hourly check failed at 09:14">The test question got a 401 from agent. Visitors see an error in the chat widget.</Banner>
-      <KV k="Broken part" v="agent (Agent Platform)" />
-      <KV k="Last change" v="Access key deleted by alex@acme.io at 08:52" />
-      <KV k="Proposed fix" v="Create a new access key and update chatbot's AGENT_KEY. $0. Can be undone for 72 hours." />
-      <div style={{ display: "flex", gap: 10 }}>
+      <T size={12} color={DO.text3}>{`To ${ctx.sc.owner} · Day 7 · 14:03`}</T>
+      <T size={18} weight={700}>clinic-notes: db-1 is reachable from the internet</T>
+      <Banner tone="bad" title="Hourly check failed at 14:02">Port 5432 on db-1 accepts connections from anywhere. The database holds patient notes.</Banner>
+      <KV k="Broken part" v="db-1 (Postgres on a Droplet)" />
+      <KV k="Last change" v="Firewall rule 5432 ← 0.0.0.0/0 added by dev@brightpath.health at 13:48" />
+      <KV k="Proposed fix" v="Remove that rule and rescan db-1. $0. Can be undone for 72 hours." />
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <Tip text="The owner hears within the hour, with the cause and a priced fix. Open it in the console.">
-          <Btn onClick={() => ctx.go("alertConsole")}>Review fix in console</Btn>
+          <Btn onClick={() => { ctx.setDay(7); ctx.go("project"); }}>Review fix in console</Btn>
         </Tip>
-        <Btn variant="secondary">Reply to alex@acme.io</Btn>
+        <Btn variant="secondary">Reply to dev@brightpath.health</Btn>
       </div>
-      <T size={11.5} color={DO.text3}>You get this because you own the support-bot plan. We never repair without your approval.</T>
+      <T size={11.5} color={DO.text3}>You get this because you own the clinic-notes plan. We never repair without your approval.</T>
     </EmailFrame>
-  );
-}
-
-function AlertConsoleScreen() {
-  const ctx = useNav();
-  const sc = ctx.sc;
-  const g = ctx.guards;
-  const lines = linesFor(sc, g);
-  const overrides: Record<string, NodeState> = { agent: ["bad", "Access key deleted"], chatbot: ["warn", "Getting 401s"] };
-  return (
-    <ProjectShell tab="Resources" banner={<Banner tone="bad" title="1 check failing since 09:14">agent's access key was deleted by alex@acme.io at 08:52. chatbot can't reach it.</Banner>}>
-      <MapWithDrawer map={MAPS.kit} lines={lines} mode="live" overrides={overrides} groupLabel={`Plan · ${sc.project}`} groupRight="check failed" meter={planMeter(sc, g, 3.4)} />
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <SectionLabel>Proposed fix</SectionLabel>
-          <Badge tone="draft">Draft</Badge>
-        </div>
-        <DTable headers={["Step", "Part", "Cost"]} rows={[["Create a new access key", "agent", "$0"], ["Set AGENT_KEY and redeploy", "chatbot", "$0"], ["Ask the test question again", "chatbot → agent", "$0"]]} />
-        <T size={12} color={DO.text3}>Can be undone for 72 hours. The deleted key stays deleted.</T>
-        <div style={{ display: "flex", gap: 10 }}>
-          <Tip text="Apply the fix. The map turns green and the change appears in Activity with an undo." place="right">
-            <Btn onClick={() => { ctx.setFixed(true); ctx.go("project"); }}>Apply fix</Btn>
-          </Tip>
-          <Btn variant="secondary" onClick={() => ctx.go("project")}>Dismiss</Btn>
-        </div>
-      </Card>
-    </ProjectShell>
   );
 }
 
 function BriefScreen() {
   const ctx = useNav();
+  const raised = ctx.resolved.includes("kit-raise");
   return (
     <EmailFrame>
-      <T size={12} color={DO.text3}>{`To ${ctx.sc.owner} · Monday 08:00`}</T>
-      <T size={18} weight={700}>Weekly brief · support-bot · week 6</T>
+      <T size={12} color={DO.text3}>{`To ${ctx.sc.owner} · Day 30 · 08:00`}</T>
+      <T size={18} weight={700}>Month 1 brief · support-bot</T>
       <div style={{ display: "flex", gap: 10 }}>
-        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Health</T><T weight={700}>167 of 168 checks passed</T></Card>
-        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Cost this week</T><T weight={700}>$10.30 fixed + $1.40 usage</T></Card>
-        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Against estimate</T><T weight={700} color={DO.green}>On track</T></Card>
+        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Health</T><T weight={700}>719 of 720 checks passed</T></Card>
+        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>This month</T><T weight={700}>$44.60 fixed + $30 usage</T></Card>
+        <Card pad={12} style={{ flex: 1, gap: 2 }}><T size={11.5} color={DO.text3}>Pause point</T><T weight={700} color={raised ? DO.green : DO.amber}>{raised ? "Raised to $45" : "Reached on day 27"}</T></Card>
       </div>
+      <T size={12.5} color={DO.text2}>Traffic was 5x the estimate after launch. 4,812 questions answered; guardrails blocked 12 jailbreak attempts.</T>
       <SectionLabel>Upkeep drafts</SectionLabel>
       <DTable
         headers={["Draft", "Cost", "Undo"]}
         rows={[
-          ["help.acme.io added /guides (42 pages). Re-index help-kb.", "about $0.02 once", "Yes"],
-          ["Newer model answers 9 of 10 test questions vs 8 of 10. Same price.", "$0", "Yes"],
+          ["help.acme.io added /guides (42 pages). Re-index help-kb.", "About $0.02 once", "Yes"],
+          ["A newer model answers 9 of 10 test questions vs 8 of 10. Same price.", "$0", "Yes"],
         ]}
       />
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <Tip text="Every upkeep item is a draft with a price and an undo. Nothing changes without approval.">
-          <Btn onClick={() => ctx.go("project")}>Review drafts</Btn>
+          <Btn onClick={() => { ctx.setDay(30); ctx.go("project"); }}>Review in console</Btn>
         </Tip>
-        <Btn variant="secondary" onClick={() => ctx.go("project")}>Open project</Btn>
       </div>
     </EmailFrame>
-  );
-}
-
-function PauseScreen() {
-  const ctx = useNav();
-  const sc = ctx.sc;
-  const g = ctx.guards;
-  const u = usageFor(sc, g);
-  return (
-    <ProjectShell tab="Resources" banner={<Banner tone="warn" title={`Usage paused at ${money(u.pauseAt)}`}>A traffic spike used this month's usage budget on the 21st. The chatbot stays up and shows a "Contact support" link instead of answers. Fixed costs keep billing. This is a pause point, not a bill cap.</Banner>}>
-      <MapWithDrawer map={MAPS.kit} lines={linesFor(sc, g)} mode="live" overrides={{ agent: ["warn", "Paused · usage limit"], "help-kb": ["warn", "Paused · no new queries"] }} groupLabel={`Plan · ${sc.project}`} groupRight="paused" meter={planMeter(sc, g, u.pauseAt, true)} />
-      <Card>
-        <SectionLabel>Choose what happens next</SectionLabel>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Tip text="Raising the pause point is a change too, so it can be undone from Activity.">
-            <Btn onClick={() => { ctx.setRaised(true); ctx.go("project"); }}>Raise pause point to $45</Btn>
-          </Tip>
-          <Btn variant="secondary" onClick={() => ctx.go("project")}>Stay paused until Oct 1</Btn>
-        </div>
-      </Card>
-    </ProjectShell>
   );
 }
 
 function UndoScreen() {
   const ctx = useNav();
   const sc = ctx.sc;
+  const r = ctx.resolved;
   const [undone, setUndone] = useState<string[]>([]);
   const rows: [string, string, string, boolean][] = [];
   if (sc.id === "kit") {
-    if (ctx.raised) rows.push(["Month 3", "Raised pause point $30 → $45", sc.owner, true]);
-    if (ctx.fixed) rows.push(["Day 9 09:31", "New agent access key, chatbot redeployed", "plan (approved by you)", true]);
+    if (r.includes("kit-model")) rows.push(["Day 30", "Switched agent to the newer model", "plan (approved by you)", true]);
+    if (r.includes("kit-reindex")) rows.push(["Day 30", "Re-indexed help-kb with /guides", "plan (approved by you)", true]);
+    if (r.includes("kit-raise")) rows.push(["Day 30 10:02", "Raised pause point $30 → $45", sc.owner, true]);
   }
-  if (ctx.extra.some((e) => e.name === WORKER.name)) rows.push(["Today", "Added worker-1 for appointment reminders", "plan (approved by you)", true]);
-  ctx.extra.filter((e) => e.name !== WORKER.name).forEach((e) => rows.push(["Day 1", `Added ${e.name}`, sc.owner, false]));
-  rows.push(["Day 1", `Created ${sc.project}`, sc.owner, false]);
+  if (sc.id === "health") {
+    if (ctx.extra.some((e) => e.name === WORKER.name)) rows.push(["Day 7", "Added worker-1 for appointment reminders", "plan (approved by you)", true]);
+    if (r.includes("health-fw")) rows.push(["Day 7 14:09", "Removed the public 5432 rule on db-1", "plan (approved by you)", true]);
+    rows.push(["Day 7 13:48", "Added firewall rule 5432 ← 0.0.0.0/0 on db-1", "dev@brightpath.health", false]);
+  }
+  if (sc.id === "fin") {
+    if (r.includes("fin-valkey")) rows.push(["Day 7", "jobs-cache now trusts api-1 only", sc.owner, true]);
+    if (r.includes("fin-ssh")) rows.push(["Day 7", "SSH on api-1 limited to office IP (Quick Fix)", sc.owner, true]);
+    ctx.extra.forEach((e) => rows.push(["Day 0", `Added ${e.name}`, sc.owner, false]));
+  }
+  rows.push(["Day 0", `Created ${sc.project}`, sc.owner, false]);
   const vibe = ctx.mode === "vibe";
   return (
     <ProjectShell tab="Activity">
       <DTable
         headers={["When", "Change", "By", vibe ? "Undo" : ""]}
-        rows={rows.map((r) => [
-          r[0],
-          <T weight={600} style={{ textDecoration: undone.includes(r[1]) ? "line-through" : "none" }}>{r[1]}</T>,
-          <T size={12} color={DO.text2}>{r[2]}</T>,
-          !vibe ? "" : undone.includes(r[1]) ? <Badge tone="neutral">Undone</Badge> : r[3] ? <Btn variant="secondary" onClick={() => setUndone([...undone, r[1]])}>Undo</Btn> : <T size={12} color={DO.text3}>Window closed (72 h)</T>,
+        rows={rows.map((row) => [
+          row[0],
+          <T weight={600} style={{ textDecoration: undone.includes(row[1]) ? "line-through" : "none" }}>{row[1]}</T>,
+          <T size={12} color={DO.text2}>{row[2]}</T>,
+          !vibe ? "" : undone.includes(row[1]) ? <Badge tone="neutral">Undone</Badge> : row[3] ? <Btn variant="secondary" onClick={() => setUndone([...undone, row[1]])}>Undo</Btn> : <T size={12} color={DO.text3}>Not undoable</T>,
         ])}
-        tones={rows.map((r) => (r[3] ? "info" : "neutral"))}
+        tones={rows.map((row) => (row[3] ? "info" : "neutral"))}
       />
-      {vibe && <T size={12} color={DO.text3}>Undo restores the previous settings and resources. Deleted data, like a removed access key, can't come back, and the undo says so before you click.</T>}
+      {vibe && <T size={12} color={DO.text3}>Changes made through the plan can be undone for 72 hours. Changes made outside it, like a manual firewall edit, show up here so the next alert can name who made them.</T>}
     </ProjectShell>
   );
 }
@@ -1993,7 +2132,7 @@ function AgentScreen() {
 const RENDER: Record<ScreenId, () => ReactNode> = {
   home: HomeScreen, start: StartScreen, github: GithubScreen, analysis: AnalysisScreen, compliance: ComplianceScreen, mode: ModeScreen, kits: KitsScreen,
   empty: EmptyScreen, ask: AskScreen, plan: PlanScreen, manual: ManualScreen, approve: ApproveScreen, deploy: DeployScreen, project: ProjectScreen,
-  add: AddScreen, diff: DiffScreen, alertEmail: AlertEmailScreen, alertConsole: AlertConsoleScreen, brief: BriefScreen, pause: PauseScreen,
+  add: AddScreen, diff: DiffScreen, alertEmail: AlertEmailScreen, brief: BriefScreen,
   undo: UndoScreen, export: ExportScreen, agent: AgentScreen,
 };
 
@@ -2009,9 +2148,9 @@ function defaultGuards(sc: Scenario): Guards {
 
 function Welcome({ onPick, onClose }: { onPick: (id: ScenarioId) => void; onClose: () => void }) {
   const tours: [ScenarioId, IconName, string, string][] = [
-    ["health", "shield", "Health records app", "GitHub repo with patient data. VibeCloud suggests HIPAA mode and swaps products to eligible ones."],
-    ["fin", "key", "Payments app, built by hand", "GitHub repo with payment data. Manual path with CSPM, firewall and backup warnings."],
-    ["kit", "agent", "Starter kit chatbot", "No repo. A starter kit becomes a VibeCloud plan, then see day 9, the weekly brief and the pause point."],
+    ["health", "shield", "Health records app · Day 0 and Day 7", "GitHub repo with patient data. VibeCloud suggests HIPAA mode. On Day 7 a firewall change exposes the database and a check catches it."],
+    ["fin", "key", "Payments app, built by hand · Day 0 and Day 7", "GitHub repo with payment data. Manual path with CSPM. On Day 7 a scan finds SSH open to everyone."],
+    ["kit", "agent", "Starter kit chatbot · Day 0 and Day 30", "No repo. A starter kit becomes a VibeCloud plan. On Day 30 usage hits the pause point and the month 1 brief arrives."],
   ];
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(3,27,78,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, fontFamily: DO.font }}>
@@ -2056,8 +2195,8 @@ export default function Prototype() {
   const [missingScope, setMissingScope] = useState(false);
   const [created, setCreated] = useState<ScenarioId[]>([]);
   const [change, setChange] = useState(false);
-  const [fixed, setFixed] = useState(false);
-  const [raised, setRaised] = useState(false);
+  const [dayBy, setDayBy] = useState<Record<ScenarioId, DayN>>({ health: 0, fin: 0, kit: 0 });
+  const [resolved, setResolved] = useState<string[]>([]);
   const [startChoice, setStartChoice] = useState<StartChoice>("github");
   const [tour, setTour] = useState<ScenarioId | null>(null);
   const [tips, setTips] = useState(true);
@@ -2091,13 +2230,16 @@ export default function Prototype() {
     extra: extraBy[scId],
     addExtra: (l) => setExtraBy({ ...extraBy, [scId]: [...extraBy[scId], l] }),
     created,
-    markCreated: () => setCreated(created.includes(scId) ? created : [...created, scId]),
+    markCreated: () => {
+      setCreated(created.includes(scId) ? created : [...created, scId]);
+      setDayBy((d) => ({ ...d, [scId]: 0 }));
+    },
     change,
     setChange,
-    fixed,
-    setFixed,
-    raised,
-    setRaised,
+    day: dayBy[scId],
+    setDay: (d, id) => setDayBy((prev) => ({ ...prev, [id ?? scId]: d })),
+    resolved,
+    resolve: (id) => setResolved((prev) => (prev.includes(id) ? prev : [...prev, id])),
     startChoice,
     setStartChoice,
     tour,
