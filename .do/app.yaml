@@ -1,4 +1,4 @@
-name: unified-project-prototype
+name: vibecloud
 region: nyc
 static_sites:
   - name: prototype
